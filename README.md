@@ -1,27 +1,29 @@
 # Resume AI 2
 
-Resume AI 2 is a local desktop application for tailoring resumes and CVs to a specific job description.
+Resume AI 2 is a local desktop application for tailoring CVs and covering letters to a specific job description.
 
 ## Current features
 
 - Application workspace save/load
 - Candidate profile fields
 - Job description input
-- Existing CV and resume input
+- Existing CV and covering letter input
+- Existing PDF CV/covering-letter import
+- PDF/text job description import
 - Tailored CV generation
-- Tailored resume generation
+- Tailored covering letter generation
 - Template selection
 - PDF export
 - Selectable PDF templates
 - OpenAI provider support
 - Ollama local AI provider support
-- Resume quality checker
+- Career document quality checker
 - AI quality review
 - Regenerate with quality fixes
 - AI review wait screen
 - Quality-improvement wait screen
 - Quality-improvement timeout guard
-- Ollama non-thinking request mode for faster resume fixes
+- Ollama non-thinking request mode for faster fixes
 - Markdown code-fence cleanup for local model output
 - Better job-signal extraction that ignores job-posting filler words
 - Candidate evidence map added to generation and improvement prompts
@@ -29,14 +31,33 @@ Resume AI 2 is a local desktop application for tailoring resumes and CVs to a sp
 - Automatic contact-header repair when the model omits supplied contact details
 - Lower-temperature Ollama settings for more consistent local output
 - Truth-aware quality scoring that separates supported job signals from unsupported job-fit gaps
-- Improved quality recommendations that stop chasing impossible keywords
-- Improvement prompts now target only truthful supported gaps
+- Covering-letter-specific generation, review, and quality-check logic
 
 ## Run the app
 
 ```bash
 python app.py
 ```
+
+## PDF/text import workflow
+
+The app can import text from:
+
+```text
+.txt
+.md
+.pdf
+```
+
+You can use this for:
+
+```text
+- Job descriptions
+- Existing CVs
+- Existing covering letters
+```
+
+PDF import is best-effort. It works on normal selectable-text PDFs. It does not perform OCR on scanned image-only PDFs yet.
 
 ## Application workspace workflow
 
@@ -47,8 +68,8 @@ Recommended flow:
 ```text
 1. Click New Application.
 2. Enter application name, target company, and target role.
-3. Fill or load candidate profile and job description.
-4. Generate the resume or CV.
+3. Fill or import candidate profile, job description, existing CV, or existing covering letter.
+4. Generate the CV or covering letter.
 5. Run Quality Check and AI Quality Review.
 6. Improve with Quality Fixes if needed.
 7. Save Application.
@@ -67,7 +88,7 @@ A workspace stores:
 - Application metadata
 - Candidate profile
 - Job description
-- Existing CV/resume input
+- Existing CV/covering-letter input
 - Selected templates
 - Selected AI provider settings, excluding the session OpenAI API key
 - Generated output
@@ -105,15 +126,18 @@ Timeout: 240
 ## Testing checklist
 
 1. Create a new application workspace.
-2. Generate a tailored resume.
-3. Run Quality Check.
-4. Run AI Quality Review.
-5. Click Improve with Quality Fixes.
-6. Save the application workspace.
-7. Close and reopen the app.
-8. Load the saved application workspace.
-9. Confirm the job description, output, and quality report restore correctly.
-10. Export PDF only after manual verification.
+2. Import an existing PDF CV or covering letter into the Existing CV / Covering Letter tab.
+3. Import or paste a job description.
+4. Generate a tailored CV.
+5. Generate a tailored covering letter.
+6. Run Quality Check on both document types.
+7. Run AI Quality Review.
+8. Click Improve with Quality Fixes.
+9. Save the application workspace.
+10. Close and reopen the app.
+11. Load the saved application workspace.
+12. Confirm imported text, generated output, and quality report restore correctly.
+13. Export PDF only after manual verification.
 
 ## Git workflow
 
@@ -122,11 +146,11 @@ Use GitHub Desktop. Keep each major feature on its own branch until tested.
 Recommended branch:
 
 ```text
-feature/application-workspace
+feature/covering-letter-generation
 ```
 
 Recommended commit for this update:
 
 ```text
-Add application workspace save and load
+Replace resume generation with covering letter generation
 ```

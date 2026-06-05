@@ -76,6 +76,7 @@ PLACEHOLDER_PATTERNS = [
 
 @dataclass
 class QualityReport:
+    document_type: str
     score: int
     verdict: str
     contact_score: int
@@ -112,6 +113,8 @@ def analyze_document(
     job_description = job_description or ""
     source_text = _candidate_source_text(profile)
 
+    is_cover_letter = _is_cover_letter(document_type)
+
     contact_score, contact_warnings = _score_contact(document_text, profile)
     keywords = extract_job_keywords(job_description)
     supported_keywords, unsupported_keywords = split_keywords_by_candidate_evidence(keywords, profile)
@@ -127,9 +130,12 @@ def analyze_document(
         matched_all_keywords=matched_keywords,
         all_keywords=keywords,
     )
-    evidence_score, evidence_warnings, bullet_stats = _score_evidence(document_text)
-    ats_score, ats_warnings = _score_ats(document_text)
-    risk_score, risk_warnings = _score_risks(document_text, source_text)
+    if is_cover_letter:
+        evidence_score, evidence_warnings, bullet_stats = _score_cover_letter_evidence(document_text)
+    else:
+        evidence_score, evidence_warnings, bullet_stats = _score_evidence(document_text)
+    ats_score, ats_warnings = _score_ats(document_text, document_type=document_type)
+    risk_score, risk_warnings = _score_risks(document_text, source_text, allow_first_person=is_cover_letter)
 
     fit_warnings = _build_fit_warnings(supported_keywords, unsupported_keywords, missing_supported_keywords)
     warnings = contact_warnings + evidence_warnings + ats_warnings + risk_warnings + fit_warnings
@@ -153,6 +159,7 @@ def analyze_document(
         "word_count": len(re.findall(r"\b\w+\b", document_text)),
         "bullet_count": bullet_stats["bullet_count"],
         "strong_bullet_count": bullet_stats["strong_bullet_count"],
+        "paragraph_count": bullet_stats.get("paragraph_count", 0),
         "job_keyword_count": len(keywords),
         "matched_keyword_count": len(matched_keywords),
         "missing_keyword_count": len(missing_keywords),
@@ -164,6 +171,7 @@ def analyze_document(
     }
 
     return QualityReport(
+        document_type=document_type,
         score=score,
         verdict=verdict,
         contact_score=contact_score,
@@ -193,7 +201,7 @@ def format_quality_report(report: QualityReport) -> str:
     recommendations = "\n".join(f"- {item}" for item in report.recommendations) if report.recommendations else "- Review manually before exporting or submitting."
 
     return f"""
-# Resume Quality Check
+# {report.document_type} Quality Check
 
 ## Overall score
 
@@ -206,7 +214,7 @@ def format_quality_report(report: QualityReport) -> str:
 |---|---:|
 | Contact details | {report.contact_score}/15 |
 | Truth-supported job match | {report.keyword_score}/35 |
-| Evidence and bullet strength | {report.evidence_score}/20 |
+| Evidence strength | {report.evidence_score}/20 |
 | ATS formatting | {report.ats_score}/15 |
 | Claim risk control | {report.risk_score}/15 |
 
@@ -217,6 +225,7 @@ def format_quality_report(report: QualityReport) -> str:
 | Word count | {report.stats.get("word_count", 0)} |
 | Bullet count | {report.stats.get("bullet_count", 0)} |
 | Strong bullet count | {report.stats.get("strong_bullet_count", 0)} |
+| Paragraph count | {report.stats.get("paragraph_count", 0)} |
 | Job signals detected | {report.stats.get("job_keyword_count", 0)} |
 | Matched job signals | {report.stats.get("matched_keyword_count", 0)} |
 | Supported job signals | {report.stats.get("supported_keyword_count", 0)} |
@@ -250,7 +259,7 @@ def format_quality_report(report: QualityReport) -> str:
 
 ## Hard rule
 
-Do not add unsupported job signals just to increase a score. Improve the resume by surfacing truthful evidence. Add new profile evidence only when it is real.
+Do not add unsupported job signals just to increase a score. Improve the document by surfacing truthful evidence. Add new profile evidence only when it is real.
 """.strip()
 
 
@@ -475,7 +484,7 @@ def _score_evidence(document_text: str) -> tuple[int, list[str], dict[str, int]]
     bullets = [line.strip() for line in document_text.splitlines() if re.match(r"^\s*[-*]\s+", line)]
     warnings = []
     if not bullets:
-        return 4, ["No bullet points were detected. Resumes need scannable achievement bullets."], {
+        return 4, ["No bullet points were detected. CVs need scannable achievement bullets."], {
             "bullet_count": 0,
             "strong_bullet_count": 0,
         }
@@ -510,7 +519,55 @@ def _score_evidence(document_text: str) -> tuple[int, list[str], dict[str, int]]
     }
 
 
-def _score_ats(document_text: str) -> tuple[int, list[str]]:
+def _score_cover_letter_evidence(document_text: str) -> tuple[int, list[str], dict[str, int]]:
+    warnings = []
+    word_count = len(re.findall(r"\b\w+\b", document_text or ""))
+    blocks = [block.strip() for block in re.split(r"\n\s*\n", document_text or "") if block.strip()]
+    paragraphs = [
+        block for block in blocks
+        if not block.startswith("#")
+        and not re.search(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", block)
+        and not block.lower().startswith(("links:", "email:", "phone:", "location:"))
+        and block.lower() not in {"dear hiring team,", "sincerely,"}
+    ]
+
+    score = 20
+    if word_count < 180:
+        score -= 5
+        warnings.append("The covering letter is probably too short. Add one concrete evidence paragraph.")
+    if word_count > 650:
+        score -= 4
+        warnings.append("The covering letter is too long. Cut repetition and keep it focused.")
+    if len(paragraphs) < 3:
+        score -= 4
+        warnings.append("The covering letter needs a clearer letter flow: opening, evidence, role alignment, and closing.")
+    if len(paragraphs) > 7:
+        score -= 2
+        warnings.append("The covering letter has too many paragraphs. Keep it tight and readable.")
+
+    lower = (document_text or "").lower()
+    if "dear" not in lower[:500]:
+        score -= 2
+        warnings.append("No greeting was detected. Add a simple greeting such as Dear Hiring Team.")
+    if not any(closing in lower[-500:] for closing in ["sincerely", "kind regards", "best regards"]):
+        score -= 2
+        warnings.append("No professional closing was detected.")
+
+    has_action = any(re.search(r"\b" + re.escape(verb) + r"\b", lower) for verb in ACTION_VERBS)
+    has_specificity = any(skill in lower for skill in SKILL_PHRASES)
+    has_result_or_purpose = any(word in lower for word in ["improved", "validated", "built", "developed", "designed", "reduced", "quality", "reliability", "accuracy", "automation", "training"])
+    if not (has_action and (has_specificity or has_result_or_purpose)):
+        score -= 5
+        warnings.append("The covering letter needs stronger evidence. Add a concrete project, method, tool, or technical purpose.")
+
+    return max(0, min(20, score)), warnings, {
+        "bullet_count": len([line for line in (document_text or "").splitlines() if re.match(r"^\s*[-*]\s+", line)]),
+        "strong_bullet_count": 0,
+        "paragraph_count": len(paragraphs),
+    }
+
+
+def _score_ats(document_text: str, document_type: str = "Resume") -> tuple[int, list[str]]:
     score = 15
     warnings = []
     if any(marker in document_text for marker in ATS_RISK_MARKERS):
@@ -523,16 +580,24 @@ def _score_ats(document_text: str) -> tuple[int, list[str]]:
         score -= 3
         warnings.append("No clear Markdown headings detected. Add simple section headings.")
     word_count = len(re.findall(r"\b\w+\b", document_text))
-    if word_count < 250:
-        score -= 4
-        warnings.append("The document is probably too short for a serious application.")
-    if word_count > 1400:
-        score -= 3
-        warnings.append("The document may be too long for a resume. Consider moving detail to a CV or trimming lower-value sections.")
+    if _is_cover_letter(document_type):
+        if word_count < 180:
+            score -= 4
+            warnings.append("The covering letter is probably too short for a serious application.")
+        if word_count > 650:
+            score -= 3
+            warnings.append("The covering letter may be too long. Keep it concise and focused.")
+    else:
+        if word_count < 250:
+            score -= 4
+            warnings.append("The document is probably too short for a serious application.")
+        if word_count > 1400:
+            score -= 3
+            warnings.append("The document may be too long for a CV. Trim lower-value sections.")
     return max(0, score), warnings
 
 
-def _score_risks(document_text: str, source_text: str) -> tuple[int, list[str]]:
+def _score_risks(document_text: str, source_text: str, allow_first_person: bool = False) -> tuple[int, list[str]]:
     score = 15
     warnings = []
     lower_doc = document_text.lower()
@@ -554,9 +619,9 @@ def _score_risks(document_text: str, source_text: str) -> tuple[int, list[str]]:
             "Potentially unverified numbers or metrics detected: " + ", ".join(unverified_numbers[:8]) + ". Verify or remove them."
         )
 
-    if re.search(r"\b(i|me|my)\b", lower_doc):
+    if not allow_first_person and re.search(r"\b(i|me|my)\b", lower_doc):
         score -= 2
-        warnings.append("First-person wording detected. Resume bullets usually work better without I, me, or my.")
+        warnings.append("First-person wording detected. CV bullets usually work better without I, me, or my.")
 
     return max(0, score), warnings
 
@@ -609,22 +674,30 @@ def _build_recommendations(
     if missing_supported_keywords:
         recommendations.append("Surface truthful evidence for supported job signals: " + ", ".join(missing_supported_keywords[:8]) + ".")
     elif keyword_score >= 25:
-        recommendations.append("Do not chase unsupported keywords. Improve clarity, ordering, and bullet strength instead.")
+        recommendations.append("Do not chase unsupported keywords. Improve clarity, ordering, and evidence strength instead.")
     if missing_unsupported_keywords:
         recommendations.append("For unsupported job signals, add profile evidence only if it is true: " + ", ".join(missing_unsupported_keywords[:8]) + ".")
     if evidence_score < 15:
-        recommendations.append("Rewrite weak bullets using this structure: action verb + tool or method + result or business purpose.")
+        if _is_cover_letter(document_type):
+            recommendations.append("Strengthen the covering letter with one concrete evidence paragraph: relevant project or role + tool/method + reason it matters for this job.")
+        else:
+            recommendations.append("Rewrite weak bullets using this structure: action verb + tool or method + result or business purpose.")
     if ats_score < 12:
         recommendations.append("Simplify formatting before PDF export. Use plain headings, plain bullets, and no tables or icons.")
     if risk_score < 12:
         recommendations.append("Audit every number, date, tool, and achievement. Remove anything not supported by the candidate profile or source documents.")
-    if document_type.lower() == "resume":
-        recommendations.append("Keep the resume tight. If a section does not help the target job, cut it.")
+    if _is_cover_letter(document_type):
+        recommendations.append("Keep the covering letter concise: 3 to 5 paragraphs, clear role motivation, concrete evidence, and a professional closing.")
     else:
         recommendations.append("For a CV, keep relevant depth, but still remove empty sections and unsupported claims.")
     if not warnings:
         recommendations.append("Run one manual pass for accuracy, grammar, and role fit before exporting the PDF.")
     return recommendations
+
+
+def _is_cover_letter(document_type: str) -> bool:
+    normalized = (document_type or "").strip().lower().replace("_", "-")
+    return normalized in {"covering letter", "cover letter", "cover-letter", "covering-letter"}
 
 
 def _candidate_source_text(profile: CandidateProfile) -> str:
@@ -643,6 +716,7 @@ def _candidate_source_text(profile: CandidateProfile) -> str:
             profile.skills,
             profile.languages,
             profile.general_cv,
+            profile.general_cover_letter,
             profile.general_resume,
         ]
     )

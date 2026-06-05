@@ -205,6 +205,23 @@ class AIService:
     def _resolve_api_key(self, settings: AISettings) -> str:
         return (settings.api_key or self.environment_api_key or "").strip()
 
+    def _is_cover_letter(self, document_type: str) -> bool:
+        normalized = (document_type or "").strip().lower().replace("_", "-")
+        return normalized in {"covering letter", "cover letter", "cover-letter", "covering-letter"}
+
+    def _source_documents_for_request(self, request: GenerationRequest) -> tuple[str, str]:
+        profile = request.profile
+        if request.document_type.lower() == "cv":
+            primary = profile.general_cv
+            secondary = profile.general_cover_letter or profile.general_resume
+        elif self._is_cover_letter(request.document_type):
+            primary = profile.general_cover_letter or profile.general_resume
+            secondary = profile.general_cv
+        else:
+            primary = profile.general_cover_letter or profile.general_resume
+            secondary = profile.general_cv
+        return primary, secondary
+
     def _test_openai_connection(self, settings: AISettings) -> str:
         api_key = self._resolve_api_key(settings)
         if not api_key:
@@ -358,7 +375,7 @@ class AIService:
         return cleaned.strip()
 
     def _postprocess_generated_document(self, text: str, request: GenerationRequest) -> str:
-        """Clean model artifacts and enforce minimum resume structure."""
+        """Clean model artifacts and enforce minimum career-document structure."""
         cleaned = self._clean_local_model_output(text)
         cleaned = self._strip_non_document_preface(cleaned)
         cleaned = self._ensure_contact_header(cleaned, request)
@@ -426,17 +443,37 @@ class AIService:
         profile = request.profile
         template = get_template(request.template_name)
         mode = request.ai_settings.generation_mode.strip() or "Balanced"
-        source_document = profile.general_cv if request.document_type.lower() == "cv" else profile.general_resume
-        alternate_source = profile.general_resume if request.document_type.lower() == "cv" else profile.general_cv
+        source_document, alternate_source = self._source_documents_for_request(request)
         job_signals = extract_job_keywords(request.job_description, limit=24)
         supported_signals, unsupported_signals = split_keywords_by_candidate_evidence(job_signals, profile)
         evidence_map = self._build_evidence_map(profile, job_signals)
         truth_aware_signal_report = build_truth_aware_signal_report(profile, request.job_description, limit=24)
         required_structure = self._required_document_structure(request.document_type)
+        is_cover_letter = self._is_cover_letter(request.document_type)
+
+        if is_cover_letter:
+            document_guidance = """
+Covering letter guidance:
+- Write a concise covering letter, not a resume in paragraph form.
+- Use 3 to 5 short paragraphs.
+- Start by naming the target role/company when the job description provides enough context.
+- Connect motivation to truthful candidate evidence, not generic enthusiasm.
+- Include 2 to 3 proof points that match supported job signals.
+- Close with a confident but plain call to discuss fit.
+- Do not use bullet-heavy resume sections unless the user supplied a covering-letter source that already uses them.
+""".strip()
+        else:
+            document_guidance = """
+CV guidance:
+- Use scannable sections and truthful achievement bullets.
+- Every bullet should contain an action, a tool/method/domain detail, and a business or technical purpose where truthful.
+- Remove weak, irrelevant, repetitive, or outdated information.
+- Make the first third of the document the strongest part.
+""".strip()
 
         instructions = f"""
 /no_think
-You are an expert career document strategist and resume writer.
+You are an expert career document strategist.
 Create a tailored {request.document_type} for the target job.
 Output the final document only, in clean Markdown. Do not wrap the answer in code fences.
 Do not reveal chain-of-thought, hidden reasoning, thinking notes, analysis notes, or implementation details.
@@ -444,14 +481,14 @@ Do not reveal chain-of-thought, hidden reasoning, thinking notes, analysis notes
 Hard rules:
 1. Never invent employers, degrees, dates, certifications, tools, metrics, titles, publications, grants, clients, or achievements.
 2. Never omit supplied contact details. The first lines must include name, email, phone, and location when supplied.
-3. Use simple Markdown headings. No tables, no icons, no decorative separators, no code fences.
+3. Use simple Markdown. No tables, no icons, no decorative separators, no code fences.
 4. Use only job keywords that are supported by candidate evidence.
 5. If a job keyword is not supported by candidate evidence, do not force it into the document.
-6. Every bullet must contain an action, a tool/method/domain detail, and a business or technical purpose where truthful.
-7. Do not write generic motivational language such as passionate, excited, fantastic opportunity, team player, or hardworking.
-8. Remove weak, irrelevant, repetitive, or outdated information.
-9. Make the first third of the document the strongest part.
-10. Return only the completed {request.document_type}. No explanation before or after it.
+6. Do not write generic motivational language such as passionate, excited, fantastic opportunity, team player, or hardworking.
+7. Return only the completed {request.document_type}. No explanation before or after it.
+
+Document-specific guidance:
+{document_guidance}
 
 Required structure:
 {required_structure}
@@ -534,8 +571,7 @@ TARGET JOB DESCRIPTION:
 
     def _build_review_prompt(self, request: GenerationRequest, generated_document: str, heuristic_report: str) -> tuple[str, str]:
         profile = request.profile
-        source_document = profile.general_cv if request.document_type.lower() == "cv" else profile.general_resume
-        alternate_source = profile.general_resume if request.document_type.lower() == "cv" else profile.general_cv
+        source_document, alternate_source = self._source_documents_for_request(request)
         job_signals = extract_job_keywords(request.job_description, limit=24)
         supported_signals, unsupported_signals = split_keywords_by_candidate_evidence(job_signals, profile)
         evidence_map = self._build_evidence_map(profile, job_signals)
@@ -543,26 +579,27 @@ TARGET JOB DESCRIPTION:
         required_structure = self._required_document_structure(request.document_type)
 
         instructions = f"""
-You are a strict resume and CV quality reviewer.
+You are a strict career document quality reviewer.
 Review the generated {request.document_type} against the target job and the candidate evidence.
 Output clean Markdown only. Do not wrap the answer in code fences.
 Do not reveal chain-of-thought, hidden reasoning, thinking notes, or implementation details.
 
 Hard rules:
-1. Do not rewrite the full resume or CV. Review it.
-2. Identify unsupported claims, fake-looking metrics, placeholders, weak bullets, and keyword gaps.
+1. Do not rewrite the full document. Review it.
+2. Identify unsupported claims, fake-looking metrics, placeholders, weak evidence, and keyword gaps.
 3. Do not suggest adding a keyword unless it is truthful based on candidate evidence.
 4. Separate missing supported signals from unsupported job-fit gaps.
 5. Say clearly when regeneration cannot improve the score without more candidate evidence.
-6. Separate critical fixes from optional improvements.
-7. Be direct and specific.
+6. For a covering letter, judge role fit, company alignment, concrete proof, tone, and concise structure.
+7. For a CV, judge scannability, evidence strength, ATS safety, and role alignment.
+8. Be direct and specific.
 
 Required Markdown sections:
 # AI Quality Review
 ## Critical risks
 ## Missing or weak evidence
 ## Keyword alignment
-## ATS and formatting
+## Structure and formatting
 ## Top 5 fixes before export
 """.strip()
 
@@ -636,16 +673,34 @@ HEURISTIC QUALITY REPORT:
         ai_review: str = "",
     ) -> tuple[str, str]:
         profile = request.profile
-        source_document = profile.general_cv if request.document_type.lower() == "cv" else profile.general_resume
-        alternate_source = profile.general_resume if request.document_type.lower() == "cv" else profile.general_cv
+        source_document, alternate_source = self._source_documents_for_request(request)
         job_signals = extract_job_keywords(request.job_description, limit=24)
         supported_signals, unsupported_signals = split_keywords_by_candidate_evidence(job_signals, profile)
         evidence_map = self._build_evidence_map(profile, job_signals)
         truth_aware_signal_report = build_truth_aware_signal_report(profile, request.job_description, limit=24)
         required_structure = self._required_document_structure(request.document_type)
+        is_cover_letter = self._is_cover_letter(request.document_type)
+
+        if is_cover_letter:
+            document_guidance = """
+Covering letter improvement priorities:
+- Keep it concise, usually 250 to 450 words.
+- Use a real letter flow: opening, fit evidence, company/role alignment, closing.
+- Improve supported job-signal alignment through truthful examples, not keyword stuffing.
+- Use first person where natural, but avoid needy, generic, or exaggerated language.
+- Do not turn the covering letter into a resume with many bullets.
+""".strip()
+        else:
+            document_guidance = """
+CV improvement priorities:
+- Rewrite weak bullets as action + tool/method + result/business purpose.
+- Keep ATS-safe formatting: plain headings, plain bullets, no tables, no icons, no decorative separators.
+- Remove duplicate, irrelevant, weak, or unsupported content.
+- Keep relevant depth, but cut anything that dilutes the target role.
+""".strip()
 
         instructions = f"""
-You are an expert resume and CV editor.
+You are an expert career document editor.
 Rewrite the current {request.document_type} using the quality report as constraints.
 Output the improved {request.document_type} only, in clean Markdown.
 Do not wrap the answer in code fences.
@@ -654,16 +709,19 @@ Do not reveal chain-of-thought, hidden reasoning, thinking notes, or implementat
 
 Hard rules:
 1. Never invent employers, clients, projects, degrees, dates, certifications, metrics, tools, titles, or achievements.
-2. Do not add consulting, DevOps, ETL, REST, cloud, architecture, or client-facing claims unless the candidate evidence clearly supports them.
+2. Do not add consulting, DevOps, ETL, REST, cloud, architecture, embedded, audio, or client-facing claims unless the candidate evidence clearly supports them.
 3. If the job uses a keyword but the candidate evidence does not support it, omit the keyword instead of faking alignment.
 4. Improve keyword alignment only by surfacing truthful evidence already present in candidate details or source documents.
 5. Prioritize missing supported signals over unsupported job-fit gaps.
-6. If a quality report lists unsupported job signals, do not chase them. Improve the document around supported signals, contact, headings, ordering, and bullet evidence.
-7. Rewrite weak bullets as action + tool/method + result/business purpose.
-8. Keep ATS-safe formatting: plain headings, plain bullets, no tables, no icons, no decorative separators.
-9. Preserve real contact details at the top.
-10. Remove duplicate, irrelevant, weak, or unsupported content.
-11. Keep the resume concise. Keep the CV complete but still focused.
+6. If a quality report lists unsupported job signals, do not chase them. Improve the document around supported signals, contact, structure, ordering, and evidence.
+7. Preserve real contact details at the top.
+8. Return only the improved document.
+
+Document-specific guidance:
+{document_guidance}
+
+Required structure:
+{required_structure}
 
 Use non-thinking mode. /no_think
 """.strip()
@@ -737,6 +795,24 @@ Return only the improved {request.document_type}. No commentary. No code fence.
         return instructions, user_input
 
     def _required_document_structure(self, document_type: str) -> str:
+        if self._is_cover_letter(document_type):
+            return """# Candidate Name
+Title
+Email: name@example.com | Phone: number | Location: city
+Links: portfolio/linkedin/github
+
+Dear Hiring Team,
+
+Opening paragraph: name the target role/company when clear and state the strongest truthful fit.
+
+Evidence paragraph: connect 1 to 2 relevant experiences, projects, tools, or domains to the job.
+
+Role-alignment paragraph: explain why this role/company is a logical next step without generic flattery.
+
+Closing paragraph: concise call to discuss fit.
+
+Sincerely,
+Candidate Name"""
         if (document_type or "").lower() == "cv":
             return """# Candidate Name
 Title
@@ -791,6 +867,7 @@ Degree, school, dates, focus areas."""
             profile.skills,
             profile.languages,
             profile.general_cv,
+            profile.general_cover_letter,
             profile.general_resume,
         ]).lower()
         if not job_signals:
@@ -827,7 +904,10 @@ Degree, school, dates, focus areas."""
         template = get_template(request.template_name)
         keywords = self._extract_keywords(request.job_description)
 
-        heading = "Tailored CV" if request.document_type.lower() == "cv" else "Tailored Resume"
+        if self._is_cover_letter(request.document_type):
+            return self._generate_local_cover_letter_draft(request, note=note)
+
+        heading = "Tailored CV" if request.document_type.lower() == "cv" else f"Tailored {request.document_type}"
         lines = [
             f"# {heading}",
             "",
@@ -866,6 +946,35 @@ Degree, school, dates, focus areas."""
             "- Remove irrelevant details that dilute the target position.",
         ]
         return "\n".join(lines).strip()
+
+    def _generate_local_cover_letter_draft(self, request: GenerationRequest, note: str) -> str:
+        profile = request.profile
+        keywords = self._extract_keywords(request.job_description)
+        focus = ", ".join(keywords[:5]) if keywords else "the target role"
+        evidence = profile.projects.strip() or profile.professions.strip() or profile.summary.strip() or "Add concrete project or work evidence before sending this letter."
+        lines = [
+            f"# {profile.name or 'Your Name'}",
+            f"{profile.title or 'Target Title'}",
+            f"Email: {profile.email} | Phone: {profile.phone} | Location: {profile.location}",
+            f"Links: {profile.links}" if profile.links else "",
+            "",
+            "Dear Hiring Team,",
+            "",
+            f"I am applying for the target role because my background aligns with {focus}. {profile.summary.strip() or 'My experience combines technical work, structured problem solving, and delivery-focused execution.'}",
+            "",
+            f"The strongest evidence from my background is: {evidence}",
+            "",
+            "I would welcome the opportunity to discuss how this experience can support your team. This draft needs manual editing before submission because it was created without AI generation.",
+            "",
+            "Sincerely,",
+            profile.name or "Your Name",
+            "",
+            "## Drafting Notes",
+            f"- {note}",
+            "- Replace generic wording with specific role/company alignment.",
+            "- Add only truthful evidence from your actual experience.",
+        ]
+        return "\n".join(line for line in lines if line is not None).strip()
 
     def _summary(self, profile, keywords: list[str]) -> str:
         base = profile.summary.strip() or f"{profile.title or 'Professional'} with experience aligned to the target role."
