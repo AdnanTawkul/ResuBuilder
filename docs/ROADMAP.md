@@ -15,6 +15,9 @@
 - AI quality review
 - Regenerate with quality fixes
 - AI review wait screen fix
+- Quality improvement wait screen
+- Quality improvement timeout guard
+- Ollama non-thinking request mode
 
 ## Next
 

@@ -61,6 +61,8 @@ class ResumeAIApp(tk.Tk):
         self.last_quality_report_markdown = ""
         self.last_quality_heuristic_markdown = ""
         self.last_ai_review_markdown = ""
+        self.active_quality_improvement_job_id = 0
+        self.quality_improvement_original_output = ""
 
         default_ai_settings = self.ai_service.get_default_settings()
         self.ai_enabled_var = tk.BooleanVar(value=default_ai_settings.use_ai)
@@ -644,17 +646,34 @@ class ResumeAIApp(tk.Tk):
             if not proceed:
                 return
 
+        settings = request.ai_settings
+        provider = settings.provider.strip() or AIService.PROVIDER_OLLAMA
+        model = settings.ollama_model.strip() if provider == AIService.PROVIDER_OLLAMA else settings.model.strip()
+        try:
+            timeout_seconds = int(settings.timeout_seconds or 180)
+        except ValueError:
+            timeout_seconds = 180
+
+        self.active_quality_improvement_job_id += 1
+        job_id = self.active_quality_improvement_job_id
+        self.quality_improvement_original_output = content
+
+        self._render_quality_improvement_wait_screen(provider=provider, model=model or "default", score=report.score, timeout_seconds=timeout_seconds)
         self.status_var.set("Regenerating with quality fixes...")
         self._set_generating_state(True)
+        self.update_idletasks()
+
+        self.after((timeout_seconds + 30) * 1000, lambda current_job_id=job_id: self._quality_improvement_timeout_guard(current_job_id, timeout_seconds))
         thread = threading.Thread(
             target=self._regenerate_with_quality_fixes_worker,
-            args=(request, content, self.last_quality_heuristic_markdown, self.last_ai_review_markdown),
+            args=(job_id, request, content, self.last_quality_heuristic_markdown, self.last_ai_review_markdown),
             daemon=True,
         )
         thread.start()
 
     def _regenerate_with_quality_fixes_worker(
         self,
+        job_id: int,
         request: GenerationRequest,
         content: str,
         heuristic_report: str,
@@ -675,18 +694,22 @@ class ResumeAIApp(tk.Tk):
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"improved_{request.document_type.lower()}_{request.profile.name}_{timestamp}.md"
             saved_path = save_markdown(filename, result)
-            self.after(0, lambda: self._finish_quality_improvement(request, result, saved_path, markdown_report, report.score))
+            self.after(0, lambda current_job_id=job_id: self._finish_quality_improvement(current_job_id, request, result, saved_path, markdown_report, report.score))
         except Exception as exc:
-            self.after(0, lambda: self._fail_quality_improvement(exc))
+            self.after(0, lambda current_job_id=job_id: self._fail_quality_improvement(current_job_id, exc))
 
     def _finish_quality_improvement(
         self,
+        job_id: int,
         request: GenerationRequest,
         result: str,
         saved_path: Path,
         markdown_report: str,
         score: int,
     ) -> None:
+        if job_id != self.active_quality_improvement_job_id:
+            return
+        self.active_quality_improvement_job_id = 0
         self.last_generation_request = request
         self.last_document_type = request.document_type.lower()
         self.last_candidate_name = request.profile.name or "candidate"
@@ -698,10 +721,49 @@ class ResumeAIApp(tk.Tk):
         self.status_var.set(f"Improved {request.document_type.lower()} saved to {saved_path}. New score: {score}/100")
         self._set_generating_state(False)
 
-    def _fail_quality_improvement(self, exc: Exception) -> None:
+    def _render_quality_improvement_wait_screen(self, provider: str, model: str, score: int, timeout_seconds: int) -> None:
+        wait_message = (
+            "# Improving with Quality Fixes\n\n"
+            "Status: running. Wait until this screen is replaced by the improved document.\n\n"
+            f"Provider: {provider}\n\n"
+            f"Model: {model}\n\n"
+            f"Current quality score: {score}/100\n\n"
+            f"Timeout window: {timeout_seconds} seconds plus a 30 second safety buffer.\n\n"
+            "The original output is preserved internally. It will be restored if the improvement fails or times out.\n"
+        )
+        self.output_text.delete("1.0", tk.END)
+        self.output_text.insert("1.0", wait_message)
+        self.quality_text.delete("1.0", tk.END)
+        self.quality_text.insert("1.0", wait_message)
+
+    def _fail_quality_improvement(self, job_id: int, exc: Exception) -> None:
+        if job_id != self.active_quality_improvement_job_id:
+            return
+        self.active_quality_improvement_job_id = 0
+        if self.quality_improvement_original_output.strip():
+            self.output_text.delete("1.0", tk.END)
+            self.output_text.insert("1.0", self.quality_improvement_original_output)
+        self._render_quality_panel()
         self.status_var.set("Quality improvement failed")
         self._set_generating_state(False)
         messagebox.showerror("Quality improvement failed", f"Could not improve the document:\n{exc}")
+
+    def _quality_improvement_timeout_guard(self, job_id: int, timeout_seconds: int) -> None:
+        if job_id != self.active_quality_improvement_job_id:
+            return
+        self.active_quality_improvement_job_id = 0
+        if self.quality_improvement_original_output.strip():
+            self.output_text.delete("1.0", tk.END)
+            self.output_text.insert("1.0", self.quality_improvement_original_output)
+        self._render_quality_panel()
+        self.status_var.set("Quality improvement timed out")
+        self._set_generating_state(False)
+        messagebox.showerror(
+            "Quality improvement timed out",
+            "Ollama did not finish the improvement within the timeout window. "
+            f"Current timeout: {timeout_seconds} seconds. Try again with qwen3:8b, increase the timeout, or shorten the resume/job description. "
+            "If Ollama finishes later, that stale result will be ignored.",
+        )
 
     def _save_quality_report(self) -> None:
         content = self.quality_text.get("1.0", tk.END).strip()

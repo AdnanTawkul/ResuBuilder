@@ -98,6 +98,7 @@ class AIService:
                         {"role": "user", "content": user_input},
                     ],
                     timeout=float(settings.timeout_seconds or 120),
+                    num_predict=1800,
                 )
                 text = self._extract_ollama_text(response).strip()
                 return self._clean_local_model_output(text) if text else "Ollama returned an empty quality review."
@@ -155,6 +156,7 @@ class AIService:
                         {"role": "user", "content": user_input},
                     ],
                     timeout=float(settings.timeout_seconds or 180),
+                    num_predict=2800,
                 )
                 text = self._extract_ollama_text(response).strip()
                 if not text:
@@ -229,6 +231,7 @@ class AIService:
                 settings=settings,
                 messages=[{"role": "user", "content": "Reply with exactly: READY"}],
                 timeout=min(float(settings.timeout_seconds or 60), 60.0),
+                num_predict=20,
             )
             text = self._extract_ollama_text(response)
             if text:
@@ -275,6 +278,7 @@ class AIService:
                     {"role": "user", "content": user_input},
                 ],
                 timeout=float(settings.timeout_seconds or 120),
+                num_predict=3500,
             )
             text = self._extract_ollama_text(response).strip()
             if not text:
@@ -289,7 +293,13 @@ class AIService:
                 f"{fallback}"
             )
 
-    def _call_ollama_chat(self, settings: AISettings, messages: list[dict[str, str]], timeout: float) -> dict:
+    def _call_ollama_chat(
+        self,
+        settings: AISettings,
+        messages: list[dict[str, str]],
+        timeout: float,
+        num_predict: int = 3000,
+    ) -> dict:
         base_url = (settings.ollama_base_url or self.DEFAULT_OLLAMA_BASE_URL).strip().rstrip("/")
         model = (settings.ollama_model or self.DEFAULT_OLLAMA_MODEL).strip()
         url = f"{base_url}/api/chat"
@@ -297,8 +307,11 @@ class AIService:
             "model": model,
             "messages": messages,
             "stream": False,
+            "think": False,
             "options": {
                 "temperature": self._temperature_for_mode(settings.generation_mode),
+                "num_predict": int(num_predict),
+                "num_ctx": 8192,
             },
         }
         request = urllib.request.Request(
@@ -328,6 +341,16 @@ class AIService:
         cleaned = text.strip()
         for marker in ("<think>", "</think>"):
             cleaned = cleaned.replace(marker, "")
+
+        lowered = cleaned.lower().strip()
+        if lowered.startswith("```markdown"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else ""
+        elif lowered.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else ""
+
+        if cleaned.strip().endswith("```"):
+            cleaned = cleaned.rsplit("```", 1)[0]
+
         return cleaned.strip()
 
     def _temperature_for_mode(self, mode: str) -> float:
@@ -490,6 +513,92 @@ GENERATED DOCUMENT TO REVIEW:
 
 HEURISTIC QUALITY REPORT:
 {heuristic_report}
+""".strip()
+        return instructions, user_input
+
+    def _build_improvement_prompt(
+        self,
+        request: GenerationRequest,
+        generated_document: str,
+        heuristic_report: str,
+        ai_review: str = "",
+    ) -> tuple[str, str]:
+        profile = request.profile
+        source_document = profile.general_cv if request.document_type.lower() == "cv" else profile.general_resume
+        alternate_source = profile.general_resume if request.document_type.lower() == "cv" else profile.general_cv
+
+        instructions = f"""
+You are an expert resume and CV editor.
+Rewrite the current {request.document_type} using the quality report as constraints.
+Output the improved {request.document_type} only, in clean Markdown.
+Do not wrap the answer in code fences.
+Do not include analysis, notes, explanations, or quality-review commentary.
+Do not reveal chain-of-thought, hidden reasoning, thinking notes, or implementation details.
+
+Hard rules:
+1. Never invent employers, clients, projects, degrees, dates, certifications, metrics, tools, titles, or achievements.
+2. Do not add consulting, DevOps, ETL, REST, cloud, architecture, or client-facing claims unless the candidate evidence clearly supports them.
+3. If the job uses a keyword but the candidate evidence does not support it, omit the keyword instead of faking alignment.
+4. Improve keyword alignment only by surfacing truthful evidence already present in candidate details or source documents.
+5. Rewrite weak bullets as action + tool/method + result/business purpose.
+6. Keep ATS-safe formatting: plain headings, plain bullets, no tables, no icons, no decorative separators.
+7. Preserve real contact details at the top.
+8. Remove duplicate, irrelevant, weak, or unsupported content.
+9. Keep the resume concise. Keep the CV complete but still focused.
+
+Use non-thinking mode. /no_think
+""".strip()
+
+        user_input = f"""
+TARGET DOCUMENT TYPE:
+{request.document_type}
+
+CANDIDATE EVIDENCE:
+Name: {profile.name}
+Email: {profile.email}
+Phone: {profile.phone}
+Location: {profile.location}
+Current or target title: {profile.title}
+Links: {profile.links}
+
+Professional summary:
+{profile.summary}
+
+Studies / education:
+{profile.studies}
+
+Professions / work experience:
+{profile.professions}
+
+Projects:
+{profile.projects}
+
+Skills:
+{profile.skills}
+
+Languages:
+{profile.languages}
+
+PRIMARY EXISTING SOURCE DOCUMENT:
+{source_document}
+
+SECONDARY EXISTING SOURCE DOCUMENT:
+{alternate_source}
+
+TARGET JOB DESCRIPTION:
+{request.job_description}
+
+CURRENT GENERATED DOCUMENT:
+{generated_document}
+
+HEURISTIC QUALITY REPORT:
+{heuristic_report}
+
+AI QUALITY REVIEW:
+{ai_review or "No AI quality review supplied. Use the heuristic report."}
+
+TASK:
+Return only the improved {request.document_type}. No commentary. No code fence.
 """.strip()
         return instructions, user_input
 
