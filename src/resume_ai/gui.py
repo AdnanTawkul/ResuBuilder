@@ -11,6 +11,7 @@ from .ai_service import AIService
 from .models import AISettings, CandidateProfile, GenerationRequest
 from .pdf_exporter import export_markdown_to_pdf
 from .pdf_templates import get_pdf_template_names, PDF_TEMPLATES
+from .quality_checker import analyze_document, format_quality_report
 from .storage import EXPORT_DIR, load_json, save_json, save_markdown
 from .templates import get_template_names, TEMPLATES
 
@@ -56,6 +57,10 @@ class ResumeAIApp(tk.Tk):
         self.status_var = tk.StringVar(value="Ready")
         self.last_document_type = "document"
         self.last_candidate_name = "candidate"
+        self.last_generation_request: GenerationRequest | None = None
+        self.last_quality_report_markdown = ""
+        self.last_quality_heuristic_markdown = ""
+        self.last_ai_review_markdown = ""
 
         default_ai_settings = self.ai_service.get_default_settings()
         self.ai_enabled_var = tk.BooleanVar(value=default_ai_settings.use_ai)
@@ -68,6 +73,9 @@ class ResumeAIApp(tk.Tk):
         self.ai_mode_var = tk.StringVar(value=default_ai_settings.generation_mode)
         self.prompt_preview_type_var = tk.StringVar(value="Resume")
         self.generate_buttons: list[ttk.Button] = []
+        self.improvement_buttons: list[ttk.Button] = []
+        self.ai_review_buttons: list[ttk.Button] = []
+        self.quality_check_buttons: list[ttk.Button] = []
 
         self._build_ui()
         self._load_saved_profile()
@@ -84,6 +92,7 @@ class ResumeAIApp(tk.Tk):
         source_tab = ttk.Frame(notebook, padding=12)
         template_tab = ttk.Frame(notebook, padding=12)
         ai_tab = ttk.Frame(notebook, padding=12)
+        quality_tab = ttk.Frame(notebook, padding=12)
         output_tab = ttk.Frame(notebook, padding=12)
 
         notebook.add(personal_tab, text="Personal Info")
@@ -91,6 +100,7 @@ class ResumeAIApp(tk.Tk):
         notebook.add(source_tab, text="Existing CV / Resume")
         notebook.add(template_tab, text="Templates")
         notebook.add(ai_tab, text="AI Settings")
+        notebook.add(quality_tab, text="Quality Check")
         notebook.add(output_tab, text="Output")
 
         self._build_personal_tab(personal_tab)
@@ -98,6 +108,7 @@ class ResumeAIApp(tk.Tk):
         self._build_source_tab(source_tab)
         self._build_template_tab(template_tab)
         self._build_ai_tab(ai_tab)
+        self._build_quality_tab(quality_tab)
         self._build_output_tab(output_tab)
 
         footer = ttk.Frame(self, padding=(12, 8))
@@ -279,6 +290,32 @@ class ResumeAIApp(tk.Tk):
         self.ai_help_text.insert("1.0", content)
         self.ai_help_text.configure(state="disabled")
 
+    def _build_quality_tab(self, parent: ttk.Frame) -> None:
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(1, weight=1)
+
+        instruction = (
+            "Run this before exporting. The checker catches obvious risks, but it does not replace human verification."
+        )
+        ttk.Label(parent, text=instruction).grid(row=0, column=0, sticky="w")
+
+        self.quality_text = tk.Text(parent, wrap="word")
+        self.quality_text.grid(row=1, column=0, sticky="nsew", pady=8)
+
+        buttons = ttk.Frame(parent)
+        buttons.grid(row=2, column=0, sticky="ew")
+        quality_check_button = ttk.Button(buttons, text="Run Quality Check", command=self._run_quality_check)
+        quality_check_button.pack(side="left")
+        self.quality_check_buttons.append(quality_check_button)
+        ai_review_button = ttk.Button(buttons, text="Run AI Quality Review", command=self._run_ai_quality_review)
+        ai_review_button.pack(side="left", padx=8)
+        self.ai_review_buttons.append(ai_review_button)
+        improve_button = ttk.Button(buttons, text="Regenerate with Quality Fixes", command=self._regenerate_with_quality_fixes)
+        improve_button.pack(side="left")
+        self.improvement_buttons.append(improve_button)
+        ttk.Button(buttons, text="Save Quality Report", command=self._save_quality_report).pack(side="left", padx=8)
+        ttk.Button(buttons, text="Clear Quality Report", command=self._clear_quality_report).pack(side="left")
+
     def _build_output_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(1, weight=1)
@@ -293,6 +330,10 @@ class ResumeAIApp(tk.Tk):
         buttons.grid(row=2, column=0, sticky="ew")
         ttk.Button(buttons, text="Save Output as Markdown", command=self._save_output).pack(side="left")
         ttk.Button(buttons, text="Export Output as PDF", command=self._export_output_pdf).pack(side="left", padx=8)
+        ttk.Button(buttons, text="Check Output Quality", command=self._run_quality_check).pack(side="left", padx=8)
+        output_improve_button = ttk.Button(buttons, text="Improve with Quality Fixes", command=self._regenerate_with_quality_fixes)
+        output_improve_button.pack(side="left")
+        self.improvement_buttons.append(output_improve_button)
         ttk.Label(buttons, text="PDF template").pack(side="left", padx=(12, 4))
         ttk.Combobox(buttons, textvariable=self.pdf_template_var, values=get_pdf_template_names(), width=16, state="readonly").pack(side="left")
         ttk.Label(buttons, text="Page size").pack(side="left", padx=(12, 4))
@@ -376,8 +417,13 @@ class ResumeAIApp(tk.Tk):
             self.after(0, lambda: self._fail_generation(exc))
 
     def _finish_generation(self, request: GenerationRequest, result: str, saved_path: Path) -> None:
+        self.last_generation_request = request
         self.last_document_type = request.document_type.lower()
         self.last_candidate_name = request.profile.name or "candidate"
+        self.last_quality_report_markdown = ""
+        self.last_quality_heuristic_markdown = ""
+        self.last_ai_review_markdown = ""
+        self.quality_text.delete("1.0", tk.END)
         self.output_text.delete("1.0", tk.END)
         self.output_text.insert("1.0", result)
         self.status_var.set(f"Generated {request.document_type.lower()} and saved to {saved_path}")
@@ -391,6 +437,21 @@ class ResumeAIApp(tk.Tk):
     def _set_generating_state(self, is_generating: bool) -> None:
         state = "disabled" if is_generating else "normal"
         for button in self.generate_buttons:
+            button.configure(state=state)
+        for button in getattr(self, "improvement_buttons", []):
+            button.configure(state=state)
+        for button in getattr(self, "ai_review_buttons", []):
+            button.configure(state=state)
+        for button in getattr(self, "quality_check_buttons", []):
+            button.configure(state=state)
+
+    def _set_ai_review_state(self, is_running: bool) -> None:
+        state = "disabled" if is_running else "normal"
+        for button in getattr(self, "ai_review_buttons", []):
+            button.configure(state=state)
+        for button in getattr(self, "improvement_buttons", []):
+            button.configure(state=state)
+        for button in getattr(self, "quality_check_buttons", []):
             button.configure(state=state)
 
     def _test_ai_connection(self) -> None:
@@ -424,6 +485,233 @@ class ResumeAIApp(tk.Tk):
         self.output_text.delete("1.0", tk.END)
         self.output_text.insert("1.0", preview)
         self.status_var.set("Prompt preview placed in Output tab")
+
+    def _build_quality_request(self) -> GenerationRequest:
+        if self.last_generation_request is not None:
+            request = self.last_generation_request
+            return GenerationRequest(
+                profile=self._collect_profile(),
+                job_description=self.job_description_text.get("1.0", tk.END).strip() or request.job_description,
+                template_name=self.template_var.get() or request.template_name,
+                document_type=request.document_type,
+                ai_settings=self._collect_ai_settings(),
+            )
+
+        document_type = "CV" if self.last_document_type.lower() == "cv" else "Resume"
+        return GenerationRequest(
+            profile=self._collect_profile(),
+            job_description=self.job_description_text.get("1.0", tk.END).strip(),
+            template_name=self.template_var.get(),
+            document_type=document_type,
+            ai_settings=self._collect_ai_settings(),
+        )
+
+    def _run_quality_check(self) -> None:
+        content = self.output_text.get("1.0", tk.END).strip()
+        if not content:
+            messagebox.showwarning("No output", "Generate a document first, then run the quality check.")
+            return
+
+        request = self._build_quality_request()
+        if not request.job_description.strip():
+            messagebox.showwarning("Missing job description", "Paste the job description before running the quality check.")
+            return
+
+        report = analyze_document(
+            document_text=content,
+            job_description=request.job_description,
+            profile=request.profile,
+            document_type=request.document_type,
+        )
+        markdown_report = format_quality_report(report)
+        self.last_quality_heuristic_markdown = markdown_report
+        self.last_ai_review_markdown = ""
+        self._render_quality_panel()
+        self.status_var.set(f"Quality check complete: {report.score}/100")
+
+    def _run_ai_quality_review(self) -> None:
+        content = self.output_text.get("1.0", tk.END).strip()
+        if not content:
+            messagebox.showwarning("No output", "Generate a document first, then run the AI quality review.")
+            return
+
+        request = self._build_quality_request()
+        if not request.job_description.strip():
+            messagebox.showwarning("Missing job description", "Paste the job description before running the AI quality review.")
+            return
+
+        if not self.last_quality_heuristic_markdown:
+            report = analyze_document(
+                document_text=content,
+                job_description=request.job_description,
+                profile=request.profile,
+                document_type=request.document_type,
+            )
+            self.last_quality_heuristic_markdown = format_quality_report(report)
+
+        settings = request.ai_settings
+        provider = settings.provider.strip() or AIService.PROVIDER_OLLAMA
+        model = settings.ollama_model.strip() if provider == AIService.PROVIDER_OLLAMA else settings.model.strip()
+        self.last_ai_review_markdown = ""
+        self._render_ai_review_wait_screen(provider=provider, model=model or "default")
+        self.status_var.set("Running AI quality review...")
+        self._set_ai_review_state(True)
+        self.update_idletasks()
+
+        thread = threading.Thread(
+            target=self._ai_quality_review_worker,
+            args=(request, content, self.last_quality_heuristic_markdown),
+            daemon=True,
+        )
+        thread.start()
+
+    def _ai_quality_review_worker(self, request: GenerationRequest, content: str, heuristic_report: str) -> None:
+        try:
+            result = self.ai_service.review_document(request, content, heuristic_report)
+            self.after(0, lambda: self._finish_ai_quality_review(result))
+        except Exception as exc:
+            self.after(0, lambda: self._fail_ai_quality_review(exc))
+
+    def _finish_ai_quality_review(self, result: str) -> None:
+        self.last_ai_review_markdown = result.strip()
+        self._render_quality_panel()
+        self.status_var.set("AI quality review complete")
+        self._set_ai_review_state(False)
+
+    def _fail_ai_quality_review(self, exc: Exception) -> None:
+        self.last_ai_review_markdown = f"# AI Quality Review\n\nAI quality review failed: {exc}"
+        self._render_quality_panel()
+        self.status_var.set("AI quality review failed")
+        self._set_ai_review_state(False)
+        messagebox.showerror("AI quality review failed", f"Could not complete the AI quality review:\n{exc}")
+
+    def _render_quality_panel(self) -> None:
+        parts = []
+        if self.last_quality_heuristic_markdown.strip():
+            parts.append(self.last_quality_heuristic_markdown.strip())
+        if self.last_ai_review_markdown.strip():
+            parts.append(self.last_ai_review_markdown.strip())
+        combined = "\n\n---\n\n".join(parts)
+        self.last_quality_report_markdown = combined
+        self.quality_text.delete("1.0", tk.END)
+        self.quality_text.insert("1.0", combined)
+
+    def _render_ai_review_wait_screen(self, provider: str, model: str) -> None:
+        wait_message = (
+            "# AI Quality Review\n\n"
+            "Status: running. Wait until this screen is replaced by the completed report.\n\n"
+            f"Provider: {provider}\n\n"
+            f"Model: {model}\n\n"
+            "The heuristic quality report is hidden during the AI review so old output is not mistaken for a finished result. "
+            "When the model finishes, the app will show the full quality report and the AI review together.\n"
+        )
+        self.last_quality_report_markdown = wait_message
+        self.quality_text.delete("1.0", tk.END)
+        self.quality_text.insert("1.0", wait_message)
+
+    def _clear_quality_report(self) -> None:
+        self.last_quality_report_markdown = ""
+        self.last_quality_heuristic_markdown = ""
+        self.last_ai_review_markdown = ""
+        self.quality_text.delete("1.0", tk.END)
+        self.status_var.set("Quality report cleared")
+
+    def _regenerate_with_quality_fixes(self) -> None:
+        content = self.output_text.get("1.0", tk.END).strip()
+        if not content:
+            messagebox.showwarning("No output", "Generate a document first, then improve it.")
+            return
+
+        request = self._build_quality_request()
+        if not request.job_description.strip():
+            messagebox.showwarning("Missing job description", "Paste the job description before improving the output.")
+            return
+
+        report = analyze_document(
+            document_text=content,
+            job_description=request.job_description,
+            profile=request.profile,
+            document_type=request.document_type,
+        )
+        self.last_quality_heuristic_markdown = format_quality_report(report)
+        self._render_quality_panel()
+
+        if report.score >= 85:
+            proceed = messagebox.askyesno(
+                "Improve anyway?",
+                f"The current quality score is already {report.score}/100. Improve it anyway?",
+            )
+            if not proceed:
+                return
+
+        self.status_var.set("Regenerating with quality fixes...")
+        self._set_generating_state(True)
+        thread = threading.Thread(
+            target=self._regenerate_with_quality_fixes_worker,
+            args=(request, content, self.last_quality_heuristic_markdown, self.last_ai_review_markdown),
+            daemon=True,
+        )
+        thread.start()
+
+    def _regenerate_with_quality_fixes_worker(
+        self,
+        request: GenerationRequest,
+        content: str,
+        heuristic_report: str,
+        ai_review: str,
+    ) -> None:
+        try:
+            result = self.ai_service.improve_document(request, content, heuristic_report, ai_review)
+            if " improvement failed:" in result.lower() or result.lower().startswith(("ollama improvement failed", "openai improvement failed", "ai improvement failed")):
+                raise RuntimeError(result)
+
+            report = analyze_document(
+                document_text=result,
+                job_description=request.job_description,
+                profile=request.profile,
+                document_type=request.document_type,
+            )
+            markdown_report = format_quality_report(report)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"improved_{request.document_type.lower()}_{request.profile.name}_{timestamp}.md"
+            saved_path = save_markdown(filename, result)
+            self.after(0, lambda: self._finish_quality_improvement(request, result, saved_path, markdown_report, report.score))
+        except Exception as exc:
+            self.after(0, lambda: self._fail_quality_improvement(exc))
+
+    def _finish_quality_improvement(
+        self,
+        request: GenerationRequest,
+        result: str,
+        saved_path: Path,
+        markdown_report: str,
+        score: int,
+    ) -> None:
+        self.last_generation_request = request
+        self.last_document_type = request.document_type.lower()
+        self.last_candidate_name = request.profile.name or "candidate"
+        self.last_quality_heuristic_markdown = markdown_report
+        self.last_ai_review_markdown = ""
+        self.output_text.delete("1.0", tk.END)
+        self.output_text.insert("1.0", result)
+        self._render_quality_panel()
+        self.status_var.set(f"Improved {request.document_type.lower()} saved to {saved_path}. New score: {score}/100")
+        self._set_generating_state(False)
+
+    def _fail_quality_improvement(self, exc: Exception) -> None:
+        self.status_var.set("Quality improvement failed")
+        self._set_generating_state(False)
+        messagebox.showerror("Quality improvement failed", f"Could not improve the document:\n{exc}")
+
+    def _save_quality_report(self) -> None:
+        content = self.quality_text.get("1.0", tk.END).strip()
+        if not content:
+            messagebox.showwarning("No quality report", "Run a quality check first.")
+            return
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = save_markdown(f"quality_report_{timestamp}.md", content)
+        self.status_var.set(f"Quality report saved to {path}")
+        messagebox.showinfo("Saved", f"Quality report saved to:\n{path}")
 
     def _save_output(self) -> None:
         content = self.output_text.get("1.0", tk.END).strip()

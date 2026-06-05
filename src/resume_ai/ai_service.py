@@ -81,6 +81,109 @@ class AIService:
             f"USER INPUT\n\n{user_input}"
         )
 
+    def review_document(self, request: GenerationRequest, generated_document: str, heuristic_report: str) -> str:
+        settings = request.ai_settings
+        if not settings.use_ai:
+            return "AI review was skipped because AI is disabled in the AI Settings tab."
+
+        provider = self._normalize_provider(settings.provider)
+        instructions, user_input = self._build_review_prompt(request, generated_document, heuristic_report)
+
+        if provider == self.PROVIDER_OLLAMA:
+            try:
+                response = self._call_ollama_chat(
+                    settings=settings,
+                    messages=[
+                        {"role": "system", "content": instructions},
+                        {"role": "user", "content": user_input},
+                    ],
+                    timeout=float(settings.timeout_seconds or 120),
+                )
+                text = self._extract_ollama_text(response).strip()
+                return self._clean_local_model_output(text) if text else "Ollama returned an empty quality review."
+            except Exception as exc:
+                return f"Ollama quality review failed: {exc}"
+
+        if provider == self.PROVIDER_OPENAI:
+            api_key = self._resolve_api_key(settings)
+            if not api_key:
+                return "OpenAI quality review failed: add a session key or set OPENAI_API_KEY."
+            try:
+                from openai import OpenAI
+
+                client = OpenAI(api_key=api_key, timeout=float(settings.timeout_seconds or 120))
+                response = client.responses.create(
+                    model=settings.model.strip() or self.DEFAULT_OPENAI_MODEL,
+                    instructions=instructions,
+                    input=user_input,
+                    max_output_tokens=2500,
+                )
+                text = (response.output_text or "").strip()
+                return text if text else "OpenAI returned an empty quality review."
+            except Exception as exc:
+                return f"OpenAI quality review failed: {exc}"
+
+        return f"AI quality review failed: unknown provider '{settings.provider}'."
+
+
+    def improve_document(
+        self,
+        request: GenerationRequest,
+        generated_document: str,
+        heuristic_report: str,
+        ai_review: str = "",
+    ) -> str:
+        """Regenerates the current document using the quality report as constraints."""
+        settings = request.ai_settings
+        if not settings.use_ai:
+            return "AI improvement failed: AI is disabled in the AI Settings tab."
+
+        provider = self._normalize_provider(settings.provider)
+        instructions, user_input = self._build_improvement_prompt(
+            request=request,
+            generated_document=generated_document,
+            heuristic_report=heuristic_report,
+            ai_review=ai_review,
+        )
+
+        if provider == self.PROVIDER_OLLAMA:
+            try:
+                response = self._call_ollama_chat(
+                    settings=settings,
+                    messages=[
+                        {"role": "system", "content": instructions},
+                        {"role": "user", "content": user_input},
+                    ],
+                    timeout=float(settings.timeout_seconds or 180),
+                )
+                text = self._extract_ollama_text(response).strip()
+                if not text:
+                    return "Ollama returned an empty improved document. Add more candidate evidence or try again."
+                return self._clean_local_model_output(text)
+            except Exception as exc:
+                return f"Ollama improvement failed: {exc}"
+
+        if provider == self.PROVIDER_OPENAI:
+            api_key = self._resolve_api_key(settings)
+            if not api_key:
+                return "OpenAI improvement failed: add a session key or set OPENAI_API_KEY."
+            try:
+                from openai import OpenAI
+
+                client = OpenAI(api_key=api_key, timeout=float(settings.timeout_seconds or 180))
+                response = client.responses.create(
+                    model=settings.model.strip() or self.DEFAULT_OPENAI_MODEL,
+                    instructions=instructions,
+                    input=user_input,
+                    max_output_tokens=5000,
+                )
+                text = (response.output_text or "").strip()
+                return text if text else "OpenAI returned an empty improved document."
+            except Exception as exc:
+                return f"OpenAI improvement failed: {exc}"
+
+        return f"AI improvement failed: unknown provider '{settings.provider}'."
+
     def _normalize_provider(self, provider: str) -> str:
         provider = (provider or "").strip().lower()
         if provider in {"ollama", "ollama local", "local"}:
@@ -313,6 +416,80 @@ SECONDARY EXISTING SOURCE DOCUMENT:
 
 TARGET JOB DESCRIPTION:
 {request.job_description}
+""".strip()
+        return instructions, user_input
+
+    def _build_review_prompt(self, request: GenerationRequest, generated_document: str, heuristic_report: str) -> tuple[str, str]:
+        profile = request.profile
+        source_document = profile.general_cv if request.document_type.lower() == "cv" else profile.general_resume
+        alternate_source = profile.general_resume if request.document_type.lower() == "cv" else profile.general_cv
+
+        instructions = f"""
+You are a strict resume and CV quality reviewer.
+Review the generated {request.document_type} against the target job and the candidate evidence.
+Output clean Markdown only. Do not wrap the answer in code fences.
+Do not reveal chain-of-thought, hidden reasoning, thinking notes, or implementation details.
+
+Hard rules:
+1. Do not rewrite the full resume or CV. Review it.
+2. Identify unsupported claims, fake-looking metrics, placeholders, weak bullets, and keyword gaps.
+3. Do not suggest adding a keyword unless it is truthful based on candidate evidence.
+4. Separate critical fixes from optional improvements.
+5. Be direct and specific.
+
+Required Markdown sections:
+# AI Quality Review
+## Critical risks
+## Missing or weak evidence
+## Keyword alignment
+## ATS and formatting
+## Top 5 fixes before export
+""".strip()
+
+        user_input = f"""
+TARGET DOCUMENT TYPE:
+{request.document_type}
+
+CANDIDATE EVIDENCE:
+Name: {profile.name}
+Email: {profile.email}
+Phone: {profile.phone}
+Location: {profile.location}
+Current or target title: {profile.title}
+Links: {profile.links}
+
+Professional summary:
+{profile.summary}
+
+Studies / education:
+{profile.studies}
+
+Professions / work experience:
+{profile.professions}
+
+Projects:
+{profile.projects}
+
+Skills:
+{profile.skills}
+
+Languages:
+{profile.languages}
+
+PRIMARY EXISTING SOURCE DOCUMENT:
+{source_document}
+
+SECONDARY EXISTING SOURCE DOCUMENT:
+{alternate_source}
+
+TARGET JOB DESCRIPTION:
+{request.job_description}
+
+GENERATED DOCUMENT TO REVIEW:
+{generated_document}
+
+HEURISTIC QUALITY REPORT:
+{heuristic_report}
 """.strip()
         return instructions, user_input
 
