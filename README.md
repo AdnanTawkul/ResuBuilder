@@ -7,13 +7,9 @@ Resume AI 2 is a local desktop application for tailoring CVs and covering letter
 - Application workspace save/load
 - Candidate profile fields
 - Job description input
-<<<<<<< Updated upstream
-- Existing CV and resume input
-=======
 - Existing CV and covering letter input
 - Existing PDF CV/covering-letter import
 - PDF/text job description import
->>>>>>> Stashed changes
 - Tailored CV generation
 - Tailored covering letter generation
 - Template selection
@@ -43,8 +39,6 @@ Resume AI 2 is a local desktop application for tailoring CVs and covering letter
 python app.py
 ```
 
-<<<<<<< Updated upstream
-=======
 ## PDF/text import workflow
 
 The app can import text from:
@@ -65,7 +59,6 @@ You can use this for:
 
 PDF import is best-effort. It works on normal selectable-text PDFs. It does not perform OCR on scanned image-only PDFs yet.
 
->>>>>>> Stashed changes
 ## Application workspace workflow
 
 Use the **Workspace** tab for each job application.
@@ -75,13 +68,8 @@ Recommended flow:
 ```text
 1. Click New Application.
 2. Enter application name, target company, and target role.
-<<<<<<< Updated upstream
-3. Fill or load candidate profile and job description.
-4. Generate the resume or CV.
-=======
 3. Fill or import candidate profile, job description, existing CV, or existing covering letter.
 4. Generate the CV or covering letter.
->>>>>>> Stashed changes
 5. Run Quality Check and AI Quality Review.
 6. Improve with Quality Fixes if needed.
 7. Save Application.
@@ -138,17 +126,6 @@ Timeout: 240
 ## Testing checklist
 
 1. Create a new application workspace.
-<<<<<<< Updated upstream
-2. Generate a tailored resume.
-3. Run Quality Check.
-4. Run AI Quality Review.
-5. Click Improve with Quality Fixes.
-6. Save the application workspace.
-7. Close and reopen the app.
-8. Load the saved application workspace.
-9. Confirm the job description, output, and quality report restore correctly.
-10. Export PDF only after manual verification.
-=======
 2. Import an existing PDF CV or covering letter into the Existing CV / Covering Letter tab.
 3. Import or paste a job description.
 4. Generate a tailored CV.
@@ -161,7 +138,6 @@ Timeout: 240
 11. Load the saved application workspace.
 12. Confirm imported text, generated output, and quality report restore correctly.
 13. Export PDF only after manual verification.
->>>>>>> Stashed changes
 
 ## Git workflow
 
@@ -170,19 +146,11 @@ Use GitHub Desktop. Keep each major feature on its own branch until tested.
 Recommended branch:
 
 ```text
-<<<<<<< Updated upstream
-feature/application-workspace
-=======
 feature/covering-letter-generation
->>>>>>> Stashed changes
 ```
 
 Recommended commit for this update:
 
 ```text
-<<<<<<< Updated upstream
-Add application workspace save and load
-=======
 Replace resume generation with covering letter generation
->>>>>>> Stashed changes
 ```

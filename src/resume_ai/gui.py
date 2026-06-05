@@ -8,6 +8,7 @@ from tkinter import filedialog, messagebox
 from tkinter import ttk
 
 from .ai_service import AIService
+from .document_importer import load_document_text
 from .models import AISettings, CandidateProfile, GenerationRequest
 from .pdf_exporter import export_markdown_to_pdf
 from .pdf_templates import get_pdf_template_names, PDF_TEMPLATES
@@ -241,7 +242,7 @@ class ResumeAIApp(tk.Tk):
 
         button_frame = ttk.Frame(parent)
         button_frame.grid(row=2, column=0, sticky="ew")
-        ttk.Button(button_frame, text="Load Job Description from .txt/.md", command=lambda: self._load_file_into_text(self.job_description_text)).pack(side="left")
+        ttk.Button(button_frame, text="Load Job Description from PDF/Text", command=lambda: self._load_file_into_text(self.job_description_text)).pack(side="left")
         ttk.Button(button_frame, text="Clear", command=lambda: self._clear_text(self.job_description_text)).pack(side="left", padx=8)
 
     def _build_source_tab(self, parent: ttk.Frame) -> None:
@@ -266,15 +267,10 @@ class ResumeAIApp(tk.Tk):
         cv_buttons.grid(row=2, column=0, sticky="w")
         cover_letter_buttons.grid(row=2, column=1, sticky="w")
 
-        ttk.Button(cv_buttons, text="Load CV .txt/.md", command=lambda: self._load_file_into_text(self.general_cv_text)).pack(side="left")
+        ttk.Button(cv_buttons, text="Load CV PDF/Text", command=lambda: self._load_file_into_text(self.general_cv_text)).pack(side="left")
         ttk.Button(cv_buttons, text="Clear", command=lambda: self._clear_text(self.general_cv_text)).pack(side="left", padx=8)
-<<<<<<< Updated upstream
-        ttk.Button(resume_buttons, text="Load Resume .txt/.md", command=lambda: self._load_file_into_text(self.general_resume_text)).pack(side="left")
-        ttk.Button(resume_buttons, text="Clear", command=lambda: self._clear_text(self.general_resume_text)).pack(side="left", padx=8)
-=======
         ttk.Button(cover_letter_buttons, text="Load Covering Letter PDF/Text", command=lambda: self._load_file_into_text(self.general_cover_letter_text)).pack(side="left")
         ttk.Button(cover_letter_buttons, text="Clear", command=lambda: self._clear_text(self.general_cover_letter_text)).pack(side="left", padx=8)
->>>>>>> Stashed changes
 
     def _build_template_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(1, weight=1)
@@ -1088,17 +1084,26 @@ class ResumeAIApp(tk.Tk):
 
     def _load_file_into_text(self, widget: tk.Text) -> None:
         path = filedialog.askopenfilename(
-            filetypes=[("Text and Markdown", "*.txt *.md"), ("All files", "*.*")]
+            filetypes=[
+                ("Supported documents", "*.txt *.md *.pdf"),
+                ("PDF files", "*.pdf"),
+                ("Text and Markdown", "*.txt *.md"),
+                ("All files", "*.*"),
+            ]
         )
         if not path:
             return
         try:
-            content = Path(path).read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            content = Path(path).read_text(encoding="latin-1")
+            content = load_document_text(path)
+        except Exception as exc:
+            messagebox.showerror("Import failed", f"Could not import this document:\n{exc}")
+            self.status_var.set("Document import failed")
+            return
+
         widget.delete("1.0", tk.END)
         widget.insert("1.0", content)
-        self.status_var.set(f"Loaded {path}")
+        self.application_modified_var.set(datetime.now().isoformat(timespec="seconds"))
+        self.status_var.set(f"Imported {Path(path).name}")
 
     def _clear_text(self, widget: tk.Text) -> None:
         widget.delete("1.0", tk.END)
