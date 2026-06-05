@@ -2,24 +2,38 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from tkinter import ttk
 
 from .ai_service import AIService
-from .models import CandidateProfile, GenerationRequest
+from .models import AISettings, CandidateProfile, GenerationRequest
 from .pdf_exporter import export_markdown_to_pdf
 from .pdf_templates import get_pdf_template_names, PDF_TEMPLATES
 from .storage import EXPORT_DIR, load_json, save_json, save_markdown
 from .templates import get_template_names, TEMPLATES
 
 
+MODEL_OPTIONS = [
+    "gpt-4.1-mini",
+    "gpt-4o-mini",
+    "gpt-5.5",
+]
+
+GENERATION_MODES = [
+    "Conservative",
+    "Balanced",
+    "Aggressive",
+]
+
+
 class ResumeAIApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Resume AI 2")
-        self.geometry("1100x760")
-        self.minsize(950, 650)
+        self.geometry("1120x800")
+        self.minsize(980, 680)
 
         self.ai_service = AIService()
         self.single_line_fields: dict[str, tk.StringVar] = {}
@@ -30,6 +44,14 @@ class ResumeAIApp(tk.Tk):
         self.status_var = tk.StringVar(value="Ready")
         self.last_document_type = "document"
         self.last_candidate_name = "candidate"
+
+        default_ai_settings = self.ai_service.get_default_settings()
+        self.ai_enabled_var = tk.BooleanVar(value=True)
+        self.ai_api_key_var = tk.StringVar(value="")
+        self.ai_model_var = tk.StringVar(value=default_ai_settings.model)
+        self.ai_mode_var = tk.StringVar(value=default_ai_settings.generation_mode)
+        self.prompt_preview_type_var = tk.StringVar(value="Resume")
+        self.generate_buttons: list[ttk.Button] = []
 
         self._build_ui()
         self._load_saved_profile()
@@ -45,18 +67,21 @@ class ResumeAIApp(tk.Tk):
         job_tab = ttk.Frame(notebook, padding=12)
         source_tab = ttk.Frame(notebook, padding=12)
         template_tab = ttk.Frame(notebook, padding=12)
+        ai_tab = ttk.Frame(notebook, padding=12)
         output_tab = ttk.Frame(notebook, padding=12)
 
         notebook.add(personal_tab, text="Personal Info")
         notebook.add(job_tab, text="Job Description")
         notebook.add(source_tab, text="Existing CV / Resume")
         notebook.add(template_tab, text="Templates")
+        notebook.add(ai_tab, text="AI Settings")
         notebook.add(output_tab, text="Output")
 
         self._build_personal_tab(personal_tab)
         self._build_job_tab(job_tab)
         self._build_source_tab(source_tab)
         self._build_template_tab(template_tab)
+        self._build_ai_tab(ai_tab)
         self._build_output_tab(output_tab)
 
         footer = ttk.Frame(self, padding=(12, 8))
@@ -65,8 +90,11 @@ class ResumeAIApp(tk.Tk):
 
         ttk.Label(footer, textvariable=self.status_var).grid(row=0, column=0, sticky="w")
         ttk.Button(footer, text="Save Profile", command=self._save_profile).grid(row=0, column=1, padx=6)
-        ttk.Button(footer, text="Generate Tailored CV", command=lambda: self._generate("CV")).grid(row=0, column=2, padx=6)
-        ttk.Button(footer, text="Generate Tailored Resume", command=lambda: self._generate("Resume")).grid(row=0, column=3, padx=6)
+        cv_button = ttk.Button(footer, text="Generate Tailored CV", command=lambda: self._generate("CV"))
+        resume_button = ttk.Button(footer, text="Generate Tailored Resume", command=lambda: self._generate("Resume"))
+        cv_button.grid(row=0, column=2, padx=6)
+        resume_button.grid(row=0, column=3, padx=6)
+        self.generate_buttons = [cv_button, resume_button]
 
     def _build_personal_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(1, weight=1)
@@ -159,6 +187,45 @@ class ResumeAIApp(tk.Tk):
         self.template_description.grid(row=1, column=0, columnspan=2, sticky="nsew")
         self._update_template_description()
 
+    def _build_ai_tab(self, parent: ttk.Frame) -> None:
+        parent.columnconfigure(1, weight=1)
+        parent.rowconfigure(7, weight=1)
+
+        env_status = "Detected" if self.ai_service.has_environment_api_key() else "Not detected"
+        ttk.Label(parent, text="AI provider").grid(row=0, column=0, sticky="w", pady=6)
+        ttk.Label(parent, text="OpenAI Responses API").grid(row=0, column=1, sticky="w", pady=6)
+
+        ttk.Label(parent, text="OPENAI_API_KEY environment key").grid(row=1, column=0, sticky="w", pady=6)
+        ttk.Label(parent, text=env_status).grid(row=1, column=1, sticky="w", pady=6)
+
+        ttk.Checkbutton(parent, text="Use AI when an API key is available", variable=self.ai_enabled_var).grid(row=2, column=1, sticky="w", pady=6)
+
+        ttk.Label(parent, text="Session API key").grid(row=3, column=0, sticky="w", pady=6)
+        key_entry = ttk.Entry(parent, textvariable=self.ai_api_key_var, show="*")
+        key_entry.grid(row=3, column=1, sticky="ew", pady=6)
+
+        ttk.Label(parent, text="Model").grid(row=4, column=0, sticky="w", pady=6)
+        ttk.Combobox(parent, textvariable=self.ai_model_var, values=MODEL_OPTIONS, state="normal").grid(row=4, column=1, sticky="ew", pady=6)
+
+        ttk.Label(parent, text="Generation mode").grid(row=5, column=0, sticky="w", pady=6)
+        ttk.Combobox(parent, textvariable=self.ai_mode_var, values=GENERATION_MODES, state="readonly").grid(row=5, column=1, sticky="ew", pady=6)
+
+        button_frame = ttk.Frame(parent)
+        button_frame.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(8, 8))
+        ttk.Button(button_frame, text="Test AI Connection", command=self._test_ai_connection).pack(side="left")
+        ttk.Button(button_frame, text="Preview Prompt", command=self._preview_ai_prompt).pack(side="left", padx=8)
+        ttk.Button(button_frame, text="Clear Session API Key", command=lambda: self.ai_api_key_var.set("")).pack(side="left")
+        ttk.Label(button_frame, text="Preview type").pack(side="left", padx=(18, 4))
+        ttk.Combobox(button_frame, textvariable=self.prompt_preview_type_var, values=["Resume", "CV"], width=10, state="readonly").pack(side="left")
+
+        self.ai_help_text = tk.Text(parent, height=5, wrap="word")
+        self.ai_help_text.grid(row=7, column=0, columnspan=2, sticky="nsew", pady=(8, 0))
+        self.ai_help_text.insert(
+            "1.0",
+            "API keys are not saved in the candidate profile. Use the Windows environment variable OPENAI_API_KEY for normal use, or paste a session key here for temporary testing. The prompt preview helps you see exactly what the app sends, without exposing the API key.",
+        )
+        self.ai_help_text.configure(state="disabled")
+
     def _build_output_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(1, weight=1)
@@ -196,6 +263,14 @@ class ResumeAIApp(tk.Tk):
             data[key] = widget.get("1.0", tk.END).strip()
         return CandidateProfile(**data)
 
+    def _collect_ai_settings(self) -> AISettings:
+        return AISettings(
+            use_ai=bool(self.ai_enabled_var.get()),
+            api_key=self.ai_api_key_var.get().strip(),
+            model=self.ai_model_var.get().strip() or AIService.DEFAULT_MODEL,
+            generation_mode=self.ai_mode_var.get().strip() or "Balanced",
+        )
+
     def _save_profile(self) -> None:
         profile = self._collect_profile()
         save_json(profile.to_dict())
@@ -218,20 +293,73 @@ class ResumeAIApp(tk.Tk):
             job_description=job_description,
             template_name=self.template_var.get(),
             document_type=document_type,
+            ai_settings=self._collect_ai_settings(),
         )
         self.status_var.set(f"Generating tailored {document_type.lower()}...")
-        self.update_idletasks()
+        self._set_generating_state(True)
 
-        result = self.ai_service.generate(request)
-        self.last_document_type = document_type.lower()
-        self.last_candidate_name = profile.name or "candidate"
+        thread = threading.Thread(target=self._generate_worker, args=(request,), daemon=True)
+        thread.start()
+
+    def _generate_worker(self, request: GenerationRequest) -> None:
+        try:
+            result = self.ai_service.generate(request)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{request.document_type.lower()}_{request.profile.name}_{timestamp}.md"
+            saved_path = save_markdown(filename, result)
+            self.after(0, lambda: self._finish_generation(request, result, saved_path))
+        except Exception as exc:
+            self.after(0, lambda: self._fail_generation(exc))
+
+    def _finish_generation(self, request: GenerationRequest, result: str, saved_path: Path) -> None:
+        self.last_document_type = request.document_type.lower()
+        self.last_candidate_name = request.profile.name or "candidate"
         self.output_text.delete("1.0", tk.END)
         self.output_text.insert("1.0", result)
+        self.status_var.set(f"Generated {request.document_type.lower()} and saved to {saved_path}")
+        self._set_generating_state(False)
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{document_type.lower()}_{profile.name}_{timestamp}.md"
-        saved_path = save_markdown(filename, result)
-        self.status_var.set(f"Generated {document_type.lower()} and saved to {saved_path}")
+    def _fail_generation(self, exc: Exception) -> None:
+        self.status_var.set("Generation failed")
+        self._set_generating_state(False)
+        messagebox.showerror("Generation failed", f"Could not generate document:\n{exc}")
+
+    def _set_generating_state(self, is_generating: bool) -> None:
+        state = "disabled" if is_generating else "normal"
+        for button in self.generate_buttons:
+            button.configure(state=state)
+
+    def _test_ai_connection(self) -> None:
+        settings = self._collect_ai_settings()
+        self.status_var.set("Testing AI connection...")
+        thread = threading.Thread(target=self._test_ai_connection_worker, args=(settings,), daemon=True)
+        thread.start()
+
+    def _test_ai_connection_worker(self, settings: AISettings) -> None:
+        result = self.ai_service.test_connection(settings)
+        self.after(0, lambda: self._show_ai_test_result(result))
+
+    def _show_ai_test_result(self, result: str) -> None:
+        self.status_var.set(result)
+        if result.startswith("AI connection works"):
+            messagebox.showinfo("AI connection", result)
+        else:
+            messagebox.showwarning("AI connection", result)
+
+    def _preview_ai_prompt(self) -> None:
+        profile = self._collect_profile()
+        job_description = self.job_description_text.get("1.0", tk.END).strip()
+        request = GenerationRequest(
+            profile=profile,
+            job_description=job_description or "Paste a job description to preview the full prompt.",
+            template_name=self.template_var.get(),
+            document_type=self.prompt_preview_type_var.get(),
+            ai_settings=self._collect_ai_settings(),
+        )
+        preview = self.ai_service.build_prompt_preview(request)
+        self.output_text.delete("1.0", tk.END)
+        self.output_text.insert("1.0", preview)
+        self.status_var.set("Prompt preview placed in Output tab")
 
     def _save_output(self) -> None:
         content = self.output_text.get("1.0", tk.END).strip()

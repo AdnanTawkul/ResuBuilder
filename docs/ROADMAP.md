@@ -15,17 +15,20 @@
 - Add validation warnings for missing dates, weak bullets, and unverifiable claims.
 
 ## Version 0.3
-- Add AI settings tab.
-- Add model selector.
-- Add prompt preview.
-- Add secure API key loading from environment variables.
-- Add temperature and generation mode options.
+- Add AI settings tab. Done in Step 4.
+- Add model selector. Done in Step 4.
+- Add prompt preview. Done in Step 4.
+- Add secure API key loading from environment variables. Done in Step 4.
+- Add session API key testing. Done in Step 4.
+- Add background generation so the GUI does not freeze. Done in Step 4.
+- Add document quality checker.
+- Add keyword matching score.
 
 ## Version 0.4
 - Add import support for PDF files.
 - Add import support for plain text files. Partly done.
 - Add skill gap analysis against the job description.
-- Add keyword matching score.
+- Add structured resume scoring.
 
 ## Version 1.0
 - Polished desktop app.

@@ -8,6 +8,7 @@ Resume AI 2 is a Python desktop app that helps tailor CVs and resumes to a speci
 - Job description tab.
 - Existing CV and resume input tab.
 - Template selection tab.
+- AI Settings tab.
 - Generate tailored CV button.
 - Generate tailored resume button.
 - Markdown output saved to the `exports` folder.
@@ -19,7 +20,15 @@ Resume AI 2 is a Python desktop app that helps tailor CVs and resumes to a speci
   - Academic CV
 - A4 and Letter PDF page sizes.
 - Local candidate profile saved to the `data` folder.
-- Optional OpenAI integration when `OPENAI_API_KEY` is available.
+- OpenAI integration through the Responses API when an API key is available.
+- Session API key entry for temporary testing.
+- AI connection test button.
+- Prompt preview button.
+- Model selector.
+- Generation mode selector:
+  - Conservative
+  - Balanced
+  - Aggressive
 
 ## Project structure
 
@@ -45,7 +54,7 @@ resume_ai_2/
 
 ## Install dependencies
 
-PDF export requires ReportLab. In PyCharm, open the Terminal at the bottom of the window and run:
+In PyCharm, open the Terminal at the bottom of the window and run:
 
 ```bash
 pip install -r requirements.txt
@@ -61,41 +70,39 @@ Run this after pulling or copying project updates that change `requirements.txt`
 4. Open `app.py`.
 5. Click the green run button.
 
-## Export a PDF
+## AI setup
 
-1. Fill in the personal information.
-2. Paste a job description.
-3. Choose a writing template in the **Templates** tab.
-4. Click **Generate Tailored CV** or **Generate Tailored Resume**.
-5. Open the **Output** tab.
-6. Choose a PDF template and page size.
-7. Click **Export Output as PDF**.
+The app uses OpenAI only when an API key is available. Without a key, it creates a local draft so the app still works.
 
-## Optional AI setup
-
-The app works without an API key by creating a local draft. To use OpenAI:
-
-1. Install requirements:
-
-```bash
-pip install -r requirements.txt
-```
-
-2. Set your API key as an environment variable.
-
-Windows PowerShell:
+### Recommended setup on Windows PowerShell
 
 ```powershell
 setx OPENAI_API_KEY "your_api_key_here"
 ```
 
-macOS or Linux:
+Then close and reopen PyCharm.
 
-```bash
-export OPENAI_API_KEY="your_api_key_here"
-```
+### Temporary setup inside the app
 
-3. Restart PyCharm after setting the key.
+1. Open the **AI Settings** tab.
+2. Paste your API key into **Session API key**.
+3. Choose a model.
+4. Choose a generation mode.
+5. Click **Test AI Connection**.
+6. Generate a tailored CV or resume.
+
+Session API keys are not saved in the candidate profile.
+
+## Export a PDF
+
+1. Fill in the personal information.
+2. Paste a job description.
+3. Choose a writing template in the **Templates** tab.
+4. Configure AI in the **AI Settings** tab.
+5. Click **Generate Tailored CV** or **Generate Tailored Resume**.
+6. Open the **Output** tab.
+7. Choose a PDF template and page size.
+8. Click **Export Output as PDF**.
 
 ## GitHub Desktop workflow
 
@@ -111,6 +118,6 @@ Good commit examples:
 - `Create initial GUI app`
 - `Add PDF export`
 - `Add selectable PDF templates`
-- `Improve resume layout styles`
+- `Add OpenAI generation settings`
 
 Do not make one huge commit after days of work. Small commits are easier to review, easier to debug, and more professional on GitHub.

@@ -1,76 +1,181 @@
+from __future__ import annotations
+
 import os
 from typing import Optional
 
-from .models import GenerationRequest
+from .models import AISettings, GenerationRequest
 from .templates import get_template
 
 
 class AIService:
     """Generates tailored career documents.
 
-    The app works without an API key by using a deterministic local draft.
-    When OPENAI_API_KEY is available and the openai package is installed, it can use AI.
+    The app can run without an API key by using a deterministic local draft.
+    When an API key is available, it uses OpenAI through the Responses API.
     """
 
+    DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini"
+
     def __init__(self) -> None:
-        self.api_key = os.getenv("OPENAI_API_KEY", "").strip()
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip()
+        self.environment_api_key = os.getenv("OPENAI_API_KEY", "").strip()
+
+    def has_environment_api_key(self) -> bool:
+        return bool(self.environment_api_key)
+
+    def get_default_settings(self) -> AISettings:
+        return AISettings(
+            use_ai=True,
+            api_key=self.environment_api_key,
+            model=self.DEFAULT_MODEL,
+            generation_mode="Balanced",
+        )
 
     def generate(self, request: GenerationRequest) -> str:
-        if self.api_key:
-            ai_result = self._generate_with_openai(request)
+        settings = request.ai_settings
+        api_key = self._resolve_api_key(settings)
+
+        if settings.use_ai and api_key:
+            ai_result = self._generate_with_openai(request, api_key)
             if ai_result:
                 return ai_result
+
         return self._generate_local_draft(request)
 
-    def _generate_with_openai(self, request: GenerationRequest) -> Optional[str]:
+    def test_connection(self, settings: AISettings) -> str:
+        api_key = self._resolve_api_key(settings)
+        if not api_key:
+            return "No API key found. Add a session key or set OPENAI_API_KEY."
+
         try:
             from openai import OpenAI
 
-            client = OpenAI(api_key=self.api_key)
-            profile = request.profile
-            template = get_template(request.template_name)
+            client = OpenAI(api_key=api_key, timeout=30.0)
+            response = client.responses.create(
+                model=settings.model.strip() or self.DEFAULT_MODEL,
+                instructions="Reply with exactly: READY",
+                input="Connection test.",
+                max_output_tokens=20,
+            )
+            text = (response.output_text or "").strip()
+            if text:
+                return f"AI connection works. Model response: {text}"
+            return "AI connection returned no text. Try a different model name."
+        except Exception as exc:
+            return f"AI connection failed: {exc}"
 
-            prompt = f"""
-You are an expert resume and CV writer.
-Create a tailored {request.document_type} for the job description.
-Use the selected template style: {request.template_name}.
-Template guidance: {template['description']}.
-Tone: {template['tone']}.
+    def build_prompt_preview(self, request: GenerationRequest) -> str:
+        instructions, user_input = self._build_openai_prompt(request)
+        return f"SYSTEM / INSTRUCTIONS\n\n{instructions}\n\nUSER INPUT\n\n{user_input}"
 
-Rules:
-1. Do not invent employers, degrees, dates, certifications, or achievements.
-2. Prioritize role-relevant skills and evidence.
-3. Use strong bullet points with measurable impact where the input supports it.
-4. Keep resumes concise. CVs may be longer.
-5. Output in clean Markdown.
+    def _resolve_api_key(self, settings: AISettings) -> str:
+        return (settings.api_key or self.environment_api_key or "").strip()
 
-Candidate profile:
+    def _generate_with_openai(self, request: GenerationRequest, api_key: str) -> Optional[str]:
+        try:
+            from openai import OpenAI
+
+            settings = request.ai_settings
+            instructions, user_input = self._build_openai_prompt(request)
+            client = OpenAI(api_key=api_key, timeout=90.0)
+
+            response = client.responses.create(
+                model=settings.model.strip() or self.DEFAULT_MODEL,
+                instructions=instructions,
+                input=user_input,
+                max_output_tokens=5000,
+            )
+            text = (response.output_text or "").strip()
+            if not text:
+                return "AI returned an empty document. Try a different model or add more candidate details."
+            return text
+        except Exception as exc:
+            fallback = self._generate_local_draft(request)
+            return (
+                "AI generation failed, so a local draft was created instead.\n\n"
+                f"Error: {exc}\n\n"
+                "---\n\n"
+                f"{fallback}"
+            )
+
+    def _build_openai_prompt(self, request: GenerationRequest) -> tuple[str, str]:
+        profile = request.profile
+        template = get_template(request.template_name)
+        mode = request.ai_settings.generation_mode.strip() or "Balanced"
+        source_document = profile.general_cv if request.document_type.lower() == "cv" else profile.general_resume
+        alternate_source = profile.general_resume if request.document_type.lower() == "cv" else profile.general_cv
+
+        instructions = f"""
+You are an expert career document strategist and resume writer.
+Create a tailored {request.document_type} for the target job.
+Output clean Markdown only. Do not wrap the answer in code fences.
+
+Hard rules:
+1. Never invent employers, degrees, dates, certifications, tools, metrics, titles, publications, grants, or achievements.
+2. If the candidate input lacks a metric, write a strong but truthful bullet without fake numbers.
+3. Prioritize evidence that matches the job description.
+4. Mirror relevant job-description language only when it is truthful for the candidate.
+5. Remove weak, irrelevant, repetitive, or outdated information.
+6. Do not include commentary, analysis, warnings, or tailoring notes in the final document.
+7. Keep formatting ATS-safe. Use Markdown headings and bullet lists.
+8. Make the first third of the document the strongest part.
+
+Template style: {request.template_name}
+Template purpose: {template['description']}
+Tone: {template['tone']}
+Generation mode: {mode}
+
+Mode guidance:
+- Conservative: preserve the candidate's original wording more closely and make minimal claims.
+- Balanced: improve clarity, ordering, impact, and keyword alignment without overreaching.
+- Aggressive: make the positioning sharper and more competitive, but still do not invent facts.
+
+Document rules:
+- Resume: target 1 to 2 pages worth of Markdown content. Be concise.
+- CV: can be longer and more complete. Include education, projects, research, publications, teaching, and languages when supplied.
+- Use the candidate's real contact details at the top.
+- Avoid empty sections. If no evidence exists for a section, omit it.
+""".strip()
+
+        user_input = f"""
+TARGET DOCUMENT TYPE:
+{request.document_type}
+
+CANDIDATE DETAILS:
 Name: {profile.name}
 Email: {profile.email}
 Phone: {profile.phone}
 Location: {profile.location}
-Title: {profile.title}
-Summary: {profile.summary}
-Studies: {profile.studies}
-Professions: {profile.professions}
-Projects: {profile.projects}
-Skills: {profile.skills}
-Languages: {profile.languages}
+Current or target title: {profile.title}
 Links: {profile.links}
-General CV: {profile.general_cv}
-General resume: {profile.general_resume}
 
-Job description:
+Professional summary:
+{profile.summary}
+
+Studies / education:
+{profile.studies}
+
+Professions / work experience:
+{profile.professions}
+
+Projects:
+{profile.projects}
+
+Skills:
+{profile.skills}
+
+Languages:
+{profile.languages}
+
+PRIMARY EXISTING SOURCE DOCUMENT:
+{source_document}
+
+SECONDARY EXISTING SOURCE DOCUMENT:
+{alternate_source}
+
+TARGET JOB DESCRIPTION:
 {request.job_description}
-"""
-            response = client.responses.create(
-                model=self.model,
-                input=prompt,
-            )
-            return response.output_text.strip()
-        except Exception as exc:
-            return f"AI generation failed, so a local draft was created instead. Error: {exc}\n\n" + self._generate_local_draft(request)
+""".strip()
+        return instructions, user_input
 
     def _generate_local_draft(self, request: GenerationRequest) -> str:
         profile = request.profile
@@ -110,7 +215,8 @@ Job description:
             self._bullets(profile.languages, fallback="Add languages and proficiency levels."),
             "",
             "## Tailoring Notes",
-            "- Replace weak task descriptions with outcomes, numbers, tools, and business impact.",
+            "- OpenAI was not used for this draft. Add an API key in the AI Settings tab for stronger tailoring.",
+            "- Replace weak task descriptions with outcomes, tools, and business impact.",
             "- Mirror only truthful job-description keywords.",
             "- Remove irrelevant details that dilute the target position.",
         ]

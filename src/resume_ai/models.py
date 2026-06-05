@@ -24,8 +24,17 @@ class CandidateProfile:
 
 
 @dataclass
+class AISettings:
+    use_ai: bool = True
+    api_key: str = ""
+    model: str = "gpt-4.1-mini"
+    generation_mode: str = "Balanced"
+
+
+@dataclass
 class GenerationRequest:
     profile: CandidateProfile
     job_description: str
     template_name: str
     document_type: str
+    ai_settings: AISettings
