@@ -1,38 +1,56 @@
 # Resume AI 2 Roadmap
 
-## Version 0.1
-- Desktop GUI with tabs. Done.
-- Candidate profile form. Done.
-- Job description input. Done.
-- Existing CV and resume input. Done.
-- Template selection. Done.
-- Generate tailored CV and resume as Markdown. Done.
-- Save profile locally. Done.
+## Done
 
-## Version 0.2
-- Add PDF export. Done in Step 2.
-- Add stronger PDF template layouts. Done in Step 3.
-- Add validation warnings for missing dates, weak bullets, and unverifiable claims.
+- Initial desktop GUI.
+- Personal information form.
+- Job description input.
+- Existing CV and resume input.
+- Template selection.
+- Markdown output.
+- PDF export.
+- Selectable PDF templates.
+- OpenAI generation settings.
+- Prompt preview.
+- Background AI generation.
+- Ollama Local AI provider.
 
-## Version 0.3
-- Add AI settings tab. Done in Step 4.
-- Add model selector. Done in Step 4.
-- Add prompt preview. Done in Step 4.
-- Add secure API key loading from environment variables. Done in Step 4.
-- Add session API key testing. Done in Step 4.
-- Add background generation so the GUI does not freeze. Done in Step 4.
-- Add document quality checker.
-- Add keyword matching score.
+## Next priorities
 
-## Version 0.4
-- Add import support for PDF files.
-- Add import support for plain text files. Partly done.
-- Add skill gap analysis against the job description.
-- Add structured resume scoring.
+### 1. Resume quality checker
 
-## Version 1.0
-- Polished desktop app.
-- Installer build.
-- Automated tests.
-- GitHub Actions workflow.
-- Proper release notes.
+Add a review panel that scores the generated resume or CV before export.
+
+Target checks:
+
+- Missing contact details.
+- Weak summary.
+- Too few role-specific keywords.
+- Too many generic bullets.
+- Possible fake metrics.
+- Missing projects or experience evidence.
+- ATS formatting risks.
+
+### 2. Job keyword match score
+
+Compare the job description against the generated document and show:
+
+- Matched keywords.
+- Missing keywords.
+- Overused keywords.
+- Suggested truthful improvements.
+
+### 3. Better local AI controls
+
+Add:
+
+- Model speed/quality labels.
+- Local generation timer.
+- Token or prompt-size estimate.
+- Warning when source documents are too long.
+
+### 4. File import
+
+Later, add PDF and DOCX import for existing resumes and CVs.
+
+Do not build this before the quality checker. Import is useful, but poor generated output is the bigger product risk.

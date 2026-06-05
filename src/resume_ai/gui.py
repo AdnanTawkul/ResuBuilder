@@ -15,10 +15,22 @@ from .storage import EXPORT_DIR, load_json, save_json, save_markdown
 from .templates import get_template_names, TEMPLATES
 
 
-MODEL_OPTIONS = [
+OPENAI_MODEL_OPTIONS = [
     "gpt-4.1-mini",
     "gpt-4o-mini",
     "gpt-5.5",
+]
+
+OLLAMA_MODEL_OPTIONS = [
+    "qwen3:14b",
+    "qwen3:8b",
+    "llama3.1:8b",
+    "gemma3:12b",
+]
+
+AI_PROVIDER_OPTIONS = [
+    "Ollama Local",
+    "OpenAI",
 ]
 
 GENERATION_MODES = [
@@ -46,9 +58,13 @@ class ResumeAIApp(tk.Tk):
         self.last_candidate_name = "candidate"
 
         default_ai_settings = self.ai_service.get_default_settings()
-        self.ai_enabled_var = tk.BooleanVar(value=True)
+        self.ai_enabled_var = tk.BooleanVar(value=default_ai_settings.use_ai)
+        self.ai_provider_var = tk.StringVar(value=default_ai_settings.provider)
         self.ai_api_key_var = tk.StringVar(value="")
         self.ai_model_var = tk.StringVar(value=default_ai_settings.model)
+        self.ollama_base_url_var = tk.StringVar(value=default_ai_settings.ollama_base_url)
+        self.ollama_model_var = tk.StringVar(value=default_ai_settings.ollama_model)
+        self.ai_timeout_var = tk.StringVar(value=str(default_ai_settings.timeout_seconds))
         self.ai_mode_var = tk.StringVar(value=default_ai_settings.generation_mode)
         self.prompt_preview_type_var = tk.StringVar(value="Resume")
         self.generate_buttons: list[ttk.Button] = []
@@ -189,41 +205,78 @@ class ResumeAIApp(tk.Tk):
 
     def _build_ai_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(1, weight=1)
-        parent.rowconfigure(7, weight=1)
+        parent.rowconfigure(12, weight=1)
 
         env_status = "Detected" if self.ai_service.has_environment_api_key() else "Not detected"
-        ttk.Label(parent, text="AI provider").grid(row=0, column=0, sticky="w", pady=6)
-        ttk.Label(parent, text="OpenAI Responses API").grid(row=0, column=1, sticky="w", pady=6)
 
-        ttk.Label(parent, text="OPENAI_API_KEY environment key").grid(row=1, column=0, sticky="w", pady=6)
-        ttk.Label(parent, text=env_status).grid(row=1, column=1, sticky="w", pady=6)
+        ttk.Checkbutton(parent, text="Use AI generation", variable=self.ai_enabled_var).grid(row=0, column=1, sticky="w", pady=6)
 
-        ttk.Checkbutton(parent, text="Use AI when an API key is available", variable=self.ai_enabled_var).grid(row=2, column=1, sticky="w", pady=6)
+        ttk.Label(parent, text="AI provider").grid(row=1, column=0, sticky="w", pady=6)
+        provider_combo = ttk.Combobox(parent, textvariable=self.ai_provider_var, values=AI_PROVIDER_OPTIONS, state="readonly")
+        provider_combo.grid(row=1, column=1, sticky="ew", pady=6)
+        provider_combo.bind("<<ComboboxSelected>>", lambda event: self._refresh_ai_provider_help())
 
-        ttk.Label(parent, text="Session API key").grid(row=3, column=0, sticky="w", pady=6)
+        ttk.Label(parent, text="Generation mode").grid(row=2, column=0, sticky="w", pady=6)
+        ttk.Combobox(parent, textvariable=self.ai_mode_var, values=GENERATION_MODES, state="readonly").grid(row=2, column=1, sticky="ew", pady=6)
+
+        ttk.Label(parent, text="Timeout seconds").grid(row=3, column=0, sticky="w", pady=6)
+        ttk.Entry(parent, textvariable=self.ai_timeout_var, width=12).grid(row=3, column=1, sticky="w", pady=6)
+
+        separator_one = ttk.Separator(parent, orient="horizontal")
+        separator_one.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(10, 8))
+
+        ttk.Label(parent, text="Ollama base URL").grid(row=5, column=0, sticky="w", pady=6)
+        ttk.Entry(parent, textvariable=self.ollama_base_url_var).grid(row=5, column=1, sticky="ew", pady=6)
+
+        ttk.Label(parent, text="Ollama model").grid(row=6, column=0, sticky="w", pady=6)
+        ttk.Combobox(parent, textvariable=self.ollama_model_var, values=OLLAMA_MODEL_OPTIONS, state="normal").grid(row=6, column=1, sticky="ew", pady=6)
+
+        separator_two = ttk.Separator(parent, orient="horizontal")
+        separator_two.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(10, 8))
+
+        ttk.Label(parent, text="OPENAI_API_KEY environment key").grid(row=8, column=0, sticky="w", pady=6)
+        ttk.Label(parent, text=env_status).grid(row=8, column=1, sticky="w", pady=6)
+
+        ttk.Label(parent, text="OpenAI session API key").grid(row=9, column=0, sticky="w", pady=6)
         key_entry = ttk.Entry(parent, textvariable=self.ai_api_key_var, show="*")
-        key_entry.grid(row=3, column=1, sticky="ew", pady=6)
+        key_entry.grid(row=9, column=1, sticky="ew", pady=6)
 
-        ttk.Label(parent, text="Model").grid(row=4, column=0, sticky="w", pady=6)
-        ttk.Combobox(parent, textvariable=self.ai_model_var, values=MODEL_OPTIONS, state="normal").grid(row=4, column=1, sticky="ew", pady=6)
-
-        ttk.Label(parent, text="Generation mode").grid(row=5, column=0, sticky="w", pady=6)
-        ttk.Combobox(parent, textvariable=self.ai_mode_var, values=GENERATION_MODES, state="readonly").grid(row=5, column=1, sticky="ew", pady=6)
+        ttk.Label(parent, text="OpenAI model").grid(row=10, column=0, sticky="nw", pady=6)
+        ttk.Combobox(parent, textvariable=self.ai_model_var, values=OPENAI_MODEL_OPTIONS, state="normal").grid(row=10, column=1, sticky="ew", pady=6)
 
         button_frame = ttk.Frame(parent)
-        button_frame.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(8, 8))
-        ttk.Button(button_frame, text="Test AI Connection", command=self._test_ai_connection).pack(side="left")
+        button_frame.grid(row=11, column=0, columnspan=2, sticky="ew", pady=(8, 8))
+        ttk.Button(button_frame, text="Test Selected AI Provider", command=self._test_ai_connection).pack(side="left")
         ttk.Button(button_frame, text="Preview Prompt", command=self._preview_ai_prompt).pack(side="left", padx=8)
         ttk.Button(button_frame, text="Clear Session API Key", command=lambda: self.ai_api_key_var.set("")).pack(side="left")
         ttk.Label(button_frame, text="Preview type").pack(side="left", padx=(18, 4))
         ttk.Combobox(button_frame, textvariable=self.prompt_preview_type_var, values=["Resume", "CV"], width=10, state="readonly").pack(side="left")
 
-        self.ai_help_text = tk.Text(parent, height=5, wrap="word")
-        self.ai_help_text.grid(row=7, column=0, columnspan=2, sticky="nsew", pady=(8, 0))
-        self.ai_help_text.insert(
-            "1.0",
-            "API keys are not saved in the candidate profile. Use the Windows environment variable OPENAI_API_KEY for normal use, or paste a session key here for temporary testing. The prompt preview helps you see exactly what the app sends, without exposing the API key.",
-        )
+        self.ai_help_text = tk.Text(parent, height=6, wrap="word")
+        self.ai_help_text.grid(row=12, column=0, columnspan=2, sticky="nsew", pady=(8, 0))
+        self._refresh_ai_provider_help()
+
+    def _refresh_ai_provider_help(self) -> None:
+        if not hasattr(self, "ai_help_text"):
+            return
+
+        selected_provider = self.ai_provider_var.get().strip() or "Ollama Local"
+        if selected_provider == "Ollama Local":
+            content = (
+                "Ollama Local runs on your computer and does not use paid OpenAI API credits. "
+                "Keep Ollama running, use base URL http://localhost:11434, and use qwen3:14b as the first serious local model. "
+                "Local output still needs review. It can invent details if your input is weak, so verify every claim before exporting a PDF."
+            )
+        else:
+            content = (
+                "OpenAI uses your API key and can cost money. Session keys are not saved in the candidate profile. "
+                "Use the Windows environment variable OPENAI_API_KEY for normal use, or paste a temporary session key here. "
+                "Use OpenAI when you want stronger final quality or when the local model is not good enough."
+            )
+
+        self.ai_help_text.configure(state="normal")
+        self.ai_help_text.delete("1.0", tk.END)
+        self.ai_help_text.insert("1.0", content)
         self.ai_help_text.configure(state="disabled")
 
     def _build_output_tab(self, parent: ttk.Frame) -> None:
@@ -264,11 +317,22 @@ class ResumeAIApp(tk.Tk):
         return CandidateProfile(**data)
 
     def _collect_ai_settings(self) -> AISettings:
+        try:
+            timeout_seconds = int(self.ai_timeout_var.get().strip() or "120")
+        except ValueError:
+            timeout_seconds = 120
+
+        timeout_seconds = max(30, min(timeout_seconds, 600))
+
         return AISettings(
             use_ai=bool(self.ai_enabled_var.get()),
+            provider=self.ai_provider_var.get().strip() or AIService.PROVIDER_OLLAMA,
             api_key=self.ai_api_key_var.get().strip(),
-            model=self.ai_model_var.get().strip() or AIService.DEFAULT_MODEL,
+            model=self.ai_model_var.get().strip() or AIService.DEFAULT_OPENAI_MODEL,
             generation_mode=self.ai_mode_var.get().strip() or "Balanced",
+            ollama_base_url=self.ollama_base_url_var.get().strip() or AIService.DEFAULT_OLLAMA_BASE_URL,
+            ollama_model=self.ollama_model_var.get().strip() or AIService.DEFAULT_OLLAMA_MODEL,
+            timeout_seconds=timeout_seconds,
         )
 
     def _save_profile(self) -> None:
@@ -341,7 +405,7 @@ class ResumeAIApp(tk.Tk):
 
     def _show_ai_test_result(self, result: str) -> None:
         self.status_var.set(result)
-        if result.startswith("AI connection works"):
+        if "connection works" in result.lower():
             messagebox.showinfo("AI connection", result)
         else:
             messagebox.showwarning("AI connection", result)

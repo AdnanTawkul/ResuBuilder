@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
+import urllib.error
+import urllib.request
 from typing import Optional
 
 from .models import AISettings, GenerationRequest
@@ -8,13 +11,14 @@ from .templates import get_template
 
 
 class AIService:
-    """Generates tailored career documents.
+    """Generates tailored career documents using cloud AI, local AI, or fallback drafts."""
 
-    The app can run without an API key by using a deterministic local draft.
-    When an API key is available, it uses OpenAI through the Responses API.
-    """
+    PROVIDER_OPENAI = "OpenAI"
+    PROVIDER_OLLAMA = "Ollama Local"
 
-    DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini"
+    DEFAULT_OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini"
+    DEFAULT_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:14b").strip() or "qwen3:14b"
+    DEFAULT_OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").strip() or "http://localhost:11434"
 
     def __init__(self) -> None:
         self.environment_api_key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -23,81 +27,215 @@ class AIService:
         return bool(self.environment_api_key)
 
     def get_default_settings(self) -> AISettings:
+        default_provider = self.PROVIDER_OPENAI if self.environment_api_key else self.PROVIDER_OLLAMA
         return AISettings(
             use_ai=True,
+            provider=default_provider,
             api_key=self.environment_api_key,
-            model=self.DEFAULT_MODEL,
+            model=self.DEFAULT_OPENAI_MODEL,
             generation_mode="Balanced",
+            ollama_base_url=self.DEFAULT_OLLAMA_BASE_URL,
+            ollama_model=self.DEFAULT_OLLAMA_MODEL,
+            timeout_seconds=120,
         )
 
     def generate(self, request: GenerationRequest) -> str:
         settings = request.ai_settings
-        api_key = self._resolve_api_key(settings)
+        if not settings.use_ai:
+            return self._generate_local_draft(request, note="AI is disabled in the AI Settings tab.")
 
-        if settings.use_ai and api_key:
-            ai_result = self._generate_with_openai(request, api_key)
+        provider = self._normalize_provider(settings.provider)
+
+        if provider == self.PROVIDER_OLLAMA:
+            ai_result = self._generate_with_ollama(request)
             if ai_result:
                 return ai_result
+            return self._generate_local_draft(request, note="Ollama did not return a usable document.")
 
-        return self._generate_local_draft(request)
+        if provider == self.PROVIDER_OPENAI:
+            api_key = self._resolve_api_key(settings)
+            if api_key:
+                ai_result = self._generate_with_openai(request, api_key)
+                if ai_result:
+                    return ai_result
+            return self._generate_local_draft(request, note="No OpenAI API key was available.")
+
+        return self._generate_local_draft(request, note=f"Unknown AI provider: {settings.provider}")
 
     def test_connection(self, settings: AISettings) -> str:
+        provider = self._normalize_provider(settings.provider)
+        if provider == self.PROVIDER_OLLAMA:
+            return self._test_ollama_connection(settings)
+        if provider == self.PROVIDER_OPENAI:
+            return self._test_openai_connection(settings)
+        return f"AI connection failed: unknown provider '{settings.provider}'."
+
+    def build_prompt_preview(self, request: GenerationRequest) -> str:
+        instructions, user_input = self._build_generation_prompt(request)
+        provider = self._normalize_provider(request.ai_settings.provider)
+        model = self._selected_model_name(request.ai_settings)
+        return (
+            f"AI PROVIDER\n\n{provider}\n\n"
+            f"MODEL\n\n{model}\n\n"
+            f"SYSTEM / INSTRUCTIONS\n\n{instructions}\n\n"
+            f"USER INPUT\n\n{user_input}"
+        )
+
+    def _normalize_provider(self, provider: str) -> str:
+        provider = (provider or "").strip().lower()
+        if provider in {"ollama", "ollama local", "local"}:
+            return self.PROVIDER_OLLAMA
+        if provider in {"openai", "openai responses api"}:
+            return self.PROVIDER_OPENAI
+        return self.PROVIDER_OLLAMA
+
+    def _selected_model_name(self, settings: AISettings) -> str:
+        provider = self._normalize_provider(settings.provider)
+        if provider == self.PROVIDER_OLLAMA:
+            return settings.ollama_model.strip() or self.DEFAULT_OLLAMA_MODEL
+        return settings.model.strip() or self.DEFAULT_OPENAI_MODEL
+
+    def _resolve_api_key(self, settings: AISettings) -> str:
+        return (settings.api_key or self.environment_api_key or "").strip()
+
+    def _test_openai_connection(self, settings: AISettings) -> str:
         api_key = self._resolve_api_key(settings)
         if not api_key:
-            return "No API key found. Add a session key or set OPENAI_API_KEY."
+            return "OpenAI connection failed: add a session key or set OPENAI_API_KEY."
 
         try:
             from openai import OpenAI
 
-            client = OpenAI(api_key=api_key, timeout=30.0)
+            client = OpenAI(api_key=api_key, timeout=float(settings.timeout_seconds or 60))
             response = client.responses.create(
-                model=settings.model.strip() or self.DEFAULT_MODEL,
+                model=settings.model.strip() or self.DEFAULT_OPENAI_MODEL,
                 instructions="Reply with exactly: READY",
                 input="Connection test.",
                 max_output_tokens=20,
             )
             text = (response.output_text or "").strip()
             if text:
-                return f"AI connection works. Model response: {text}"
-            return "AI connection returned no text. Try a different model name."
+                return f"OpenAI connection works. Model response: {text}"
+            return "OpenAI connection returned no text. Try a different model name."
         except Exception as exc:
-            return f"AI connection failed: {exc}"
+            return f"OpenAI connection failed: {exc}"
 
-    def build_prompt_preview(self, request: GenerationRequest) -> str:
-        instructions, user_input = self._build_openai_prompt(request)
-        return f"SYSTEM / INSTRUCTIONS\n\n{instructions}\n\nUSER INPUT\n\n{user_input}"
-
-    def _resolve_api_key(self, settings: AISettings) -> str:
-        return (settings.api_key or self.environment_api_key or "").strip()
+    def _test_ollama_connection(self, settings: AISettings) -> str:
+        try:
+            response = self._call_ollama_chat(
+                settings=settings,
+                messages=[{"role": "user", "content": "Reply with exactly: READY"}],
+                timeout=min(float(settings.timeout_seconds or 60), 60.0),
+            )
+            text = self._extract_ollama_text(response)
+            if text:
+                return f"Ollama connection works. Model response: {text[:200]}"
+            return "Ollama connection returned no text. Check the model name."
+        except Exception as exc:
+            return f"Ollama connection failed: {exc}"
 
     def _generate_with_openai(self, request: GenerationRequest, api_key: str) -> Optional[str]:
         try:
             from openai import OpenAI
 
             settings = request.ai_settings
-            instructions, user_input = self._build_openai_prompt(request)
-            client = OpenAI(api_key=api_key, timeout=90.0)
+            instructions, user_input = self._build_generation_prompt(request)
+            client = OpenAI(api_key=api_key, timeout=float(settings.timeout_seconds or 120))
 
             response = client.responses.create(
-                model=settings.model.strip() or self.DEFAULT_MODEL,
+                model=settings.model.strip() or self.DEFAULT_OPENAI_MODEL,
                 instructions=instructions,
                 input=user_input,
                 max_output_tokens=5000,
             )
             text = (response.output_text or "").strip()
             if not text:
-                return "AI returned an empty document. Try a different model or add more candidate details."
+                return "OpenAI returned an empty document. Try a different model or add more candidate details."
             return text
         except Exception as exc:
-            fallback = self._generate_local_draft(request)
+            fallback = self._generate_local_draft(request, note="OpenAI generation failed.")
             return (
-                "AI generation failed, so a local draft was created instead.\n\n"
+                "OpenAI generation failed, so a local non-AI draft was created instead.\n\n"
                 f"Error: {exc}\n\n"
                 "---\n\n"
                 f"{fallback}"
             )
 
-    def _build_openai_prompt(self, request: GenerationRequest) -> tuple[str, str]:
+    def _generate_with_ollama(self, request: GenerationRequest) -> Optional[str]:
+        try:
+            settings = request.ai_settings
+            instructions, user_input = self._build_generation_prompt(request)
+            response = self._call_ollama_chat(
+                settings=settings,
+                messages=[
+                    {"role": "system", "content": instructions},
+                    {"role": "user", "content": user_input},
+                ],
+                timeout=float(settings.timeout_seconds or 120),
+            )
+            text = self._extract_ollama_text(response).strip()
+            if not text:
+                return "Ollama returned an empty document. Check the model name or add more candidate details."
+            return self._clean_local_model_output(text)
+        except Exception as exc:
+            fallback = self._generate_local_draft(request, note="Ollama generation failed.")
+            return (
+                "Ollama generation failed, so a local non-AI draft was created instead.\n\n"
+                f"Error: {exc}\n\n"
+                "---\n\n"
+                f"{fallback}"
+            )
+
+    def _call_ollama_chat(self, settings: AISettings, messages: list[dict[str, str]], timeout: float) -> dict:
+        base_url = (settings.ollama_base_url or self.DEFAULT_OLLAMA_BASE_URL).strip().rstrip("/")
+        model = (settings.ollama_model or self.DEFAULT_OLLAMA_MODEL).strip()
+        url = f"{base_url}/api/chat"
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "temperature": self._temperature_for_mode(settings.generation_mode),
+            },
+        }
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                raw = response.read().decode("utf-8")
+                return json.loads(raw)
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"HTTP {exc.code} from Ollama at {url}: {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(
+                f"Could not reach Ollama at {base_url}. Make sure Ollama is running and the base URL is correct."
+            ) from exc
+
+    def _extract_ollama_text(self, response: dict) -> str:
+        message = response.get("message", {}) if isinstance(response, dict) else {}
+        content = message.get("content", "") if isinstance(message, dict) else ""
+        return str(content or "").strip()
+
+    def _clean_local_model_output(self, text: str) -> str:
+        cleaned = text.strip()
+        for marker in ("<think>", "</think>"):
+            cleaned = cleaned.replace(marker, "")
+        return cleaned.strip()
+
+    def _temperature_for_mode(self, mode: str) -> float:
+        normalized = (mode or "Balanced").strip().lower()
+        if normalized == "conservative":
+            return 0.2
+        if normalized == "aggressive":
+            return 0.7
+        return 0.4
+
+    def _build_generation_prompt(self, request: GenerationRequest) -> tuple[str, str]:
         profile = request.profile
         template = get_template(request.template_name)
         mode = request.ai_settings.generation_mode.strip() or "Balanced"
@@ -108,6 +246,7 @@ class AIService:
 You are an expert career document strategist and resume writer.
 Create a tailored {request.document_type} for the target job.
 Output clean Markdown only. Do not wrap the answer in code fences.
+Do not reveal chain-of-thought, hidden reasoning, thinking notes, analysis notes, or implementation details.
 
 Hard rules:
 1. Never invent employers, degrees, dates, certifications, tools, metrics, titles, publications, grants, or achievements.
@@ -177,7 +316,7 @@ TARGET JOB DESCRIPTION:
 """.strip()
         return instructions, user_input
 
-    def _generate_local_draft(self, request: GenerationRequest) -> str:
+    def _generate_local_draft(self, request: GenerationRequest, note: str = "AI was not used for this draft.") -> str:
         profile = request.profile
         template = get_template(request.template_name)
         keywords = self._extract_keywords(request.job_description)
@@ -215,7 +354,7 @@ TARGET JOB DESCRIPTION:
             self._bullets(profile.languages, fallback="Add languages and proficiency levels."),
             "",
             "## Tailoring Notes",
-            "- OpenAI was not used for this draft. Add an API key in the AI Settings tab for stronger tailoring.",
+            f"- {note}",
             "- Replace weak task descriptions with outcomes, tools, and business impact.",
             "- Mirror only truthful job-description keywords.",
             "- Remove irrelevant details that dilute the target position.",
