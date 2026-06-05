@@ -10,8 +10,7 @@
 - Save profile locally.
 
 ## Version 0.2
-- Add DOCX export.
-- Add PDF export.
+- Add PDF export. Done in Step 2.
 - Add stronger template layouts.
 - Add validation warnings for missing dates, weak bullets, and unverifiable claims.
 

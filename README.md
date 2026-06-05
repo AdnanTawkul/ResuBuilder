@@ -11,6 +11,7 @@ Resume AI 2 is a Python desktop app that helps tailor CVs and resumes to a speci
 - Generate tailored CV button.
 - Generate tailored resume button.
 - Markdown output saved to the `exports` folder.
+- PDF export from the generated output.
 - Local candidate profile saved to the `data` folder.
 - Optional OpenAI integration when `OPENAI_API_KEY` is available.
 
@@ -33,6 +34,16 @@ resume_ai_2/
         ├── storage.py
         └── templates.py
 ```
+
+## Install dependencies
+
+PDF export requires ReportLab. In PyCharm, open the Terminal at the bottom of the window and run:
+
+```bash
+pip install -r requirements.txt
+```
+
+Run this after pulling or copying project updates that change `requirements.txt`.
 
 ## Run locally in PyCharm
 
@@ -88,6 +99,6 @@ Make one small commit after each working feature:
 - `Add document generation service`
 - `Add template selector`
 - `Add AI integration`
-- `Add DOCX export`
+- `Add PDF export`
 
 Do not make one huge commit after days of work. That is how messy projects become impossible to review.

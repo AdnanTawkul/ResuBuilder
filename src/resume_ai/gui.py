@@ -8,7 +8,8 @@ from tkinter import ttk
 
 from .ai_service import AIService
 from .models import CandidateProfile, GenerationRequest
-from .storage import load_json, save_json, save_markdown
+from .pdf_exporter import export_markdown_to_pdf
+from .storage import EXPORT_DIR, load_json, save_json, save_markdown
 from .templates import get_template_names, TEMPLATES
 
 
@@ -23,7 +24,10 @@ class ResumeAIApp(tk.Tk):
         self.single_line_fields: dict[str, tk.StringVar] = {}
         self.multi_line_fields: dict[str, tk.Text] = {}
         self.template_var = tk.StringVar(value="ATS Friendly")
+        self.pdf_page_size_var = tk.StringVar(value="A4")
         self.status_var = tk.StringVar(value="Ready")
+        self.last_document_type = "document"
+        self.last_candidate_name = "candidate"
 
         self._build_ui()
         self._load_saved_profile()
@@ -166,6 +170,9 @@ class ResumeAIApp(tk.Tk):
         buttons = ttk.Frame(parent)
         buttons.grid(row=2, column=0, sticky="ew")
         ttk.Button(buttons, text="Save Output as Markdown", command=self._save_output).pack(side="left")
+        ttk.Button(buttons, text="Export Output as PDF", command=self._export_output_pdf).pack(side="left", padx=8)
+        ttk.Label(buttons, text="Page size").pack(side="left", padx=(12, 4))
+        ttk.Combobox(buttons, textvariable=self.pdf_page_size_var, values=["A4", "Letter"], width=8, state="readonly").pack(side="left")
         ttk.Button(buttons, text="Clear Output", command=lambda: self._clear_text(self.output_text)).pack(side="left", padx=8)
 
     def _load_saved_profile(self) -> None:
@@ -212,6 +219,8 @@ class ResumeAIApp(tk.Tk):
         self.update_idletasks()
 
         result = self.ai_service.generate(request)
+        self.last_document_type = document_type.lower()
+        self.last_candidate_name = profile.name or "candidate"
         self.output_text.delete("1.0", tk.END)
         self.output_text.insert("1.0", result)
 
@@ -230,6 +239,33 @@ class ResumeAIApp(tk.Tk):
         self.status_var.set(f"Output saved to {path}")
         messagebox.showinfo("Saved", f"Output saved to:\n{path}")
 
+    def _export_output_pdf(self) -> None:
+        content = self.output_text.get("1.0", tk.END).strip()
+        if not content:
+            messagebox.showwarning("No output", "Generate a document first.")
+            return
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_name = self._safe_filename(f"{self.last_document_type}_{self.last_candidate_name}_{timestamp}.pdf")
+        path = filedialog.asksaveasfilename(
+            initialdir=EXPORT_DIR,
+            initialfile=safe_name,
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf")],
+        )
+        if not path:
+            return
+
+        try:
+            saved_path = export_markdown_to_pdf(content, path, page_size=self.pdf_page_size_var.get())
+        except Exception as exc:
+            messagebox.showerror("PDF export failed", f"Could not export PDF:\n{exc}")
+            self.status_var.set("PDF export failed")
+            return
+
+        self.status_var.set(f"PDF exported to {saved_path}")
+        messagebox.showinfo("PDF exported", f"PDF exported to:\n{saved_path}")
+
     def _load_file_into_text(self, widget: tk.Text) -> None:
         path = filedialog.askopenfilename(
             filetypes=[("Text and Markdown", "*.txt *.md"), ("All files", "*.*")]
@@ -247,6 +283,13 @@ class ResumeAIApp(tk.Tk):
     def _clear_text(self, widget: tk.Text) -> None:
         widget.delete("1.0", tk.END)
 
+    def _safe_filename(self, filename: str) -> str:
+        allowed = []
+        for char in filename.strip().replace(" ", "_").lower():
+            if char.isalnum() or char in {"_", "-", "."}:
+                allowed.append(char)
+        return "".join(allowed) or "document.pdf"
+
     def _update_template_description(self) -> None:
         selected = self.template_var.get()
         template = TEMPLATES.get(selected, TEMPLATES["ATS Friendly"])
@@ -254,7 +297,7 @@ class ResumeAIApp(tk.Tk):
             f"{selected}\n\n"
             f"Purpose: {template['description']}\n\n"
             f"Tone: {template['tone']}\n\n"
-            "Current version creates Markdown output. Later versions should add DOCX/PDF export, visual templates, and saved template presets."
+            "Current version creates Markdown and PDF output. Later versions should add stronger visual templates, validation, and saved template presets."
         )
         self.template_description.configure(state="normal")
         self.template_description.delete("1.0", tk.END)

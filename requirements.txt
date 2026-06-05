@@ -1,3 +1,6 @@
 # The GUI uses built-in tkinter, so the app can run without packages.
 # Optional AI support. Install this when you are ready to use OpenAI.
 openai>=2.0.0
+
+# Required for PDF export.
+reportlab>=4.0.0
