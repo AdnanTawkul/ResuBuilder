@@ -17,6 +17,8 @@ class CandidateProfile:
     languages: str = ""
     links: str = ""
     general_cv: str = ""
+    general_cover_letter: str = ""
+    # Legacy field kept so old saved profiles/workspaces that used “general_resume” still load safely.
     general_resume: str = ""
 
     def to_dict(self) -> Dict[str, str]:

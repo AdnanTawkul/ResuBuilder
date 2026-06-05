@@ -87,7 +87,7 @@ class ResumeAIApp(tk.Tk):
         self.ollama_model_var = tk.StringVar(value=default_ai_settings.ollama_model)
         self.ai_timeout_var = tk.StringVar(value=str(default_ai_settings.timeout_seconds))
         self.ai_mode_var = tk.StringVar(value=default_ai_settings.generation_mode)
-        self.prompt_preview_type_var = tk.StringVar(value="Resume")
+        self.prompt_preview_type_var = tk.StringVar(value="Covering Letter")
         self.generate_buttons: list[ttk.Button] = []
         self.improvement_buttons: list[ttk.Button] = []
         self.ai_review_buttons: list[ttk.Button] = []
@@ -115,7 +115,7 @@ class ResumeAIApp(tk.Tk):
         notebook.add(workspace_tab, text="Workspace")
         notebook.add(personal_tab, text="Personal Info")
         notebook.add(job_tab, text="Job Description")
-        notebook.add(source_tab, text="Existing CV / Resume")
+        notebook.add(source_tab, text="Existing CV / Covering Letter")
         notebook.add(template_tab, text="Templates")
         notebook.add(ai_tab, text="AI Settings")
         notebook.add(quality_tab, text="Quality Check")
@@ -137,10 +137,10 @@ class ResumeAIApp(tk.Tk):
         ttk.Label(footer, textvariable=self.status_var).grid(row=0, column=0, sticky="w")
         ttk.Button(footer, text="Save Profile", command=self._save_profile).grid(row=0, column=1, padx=6)
         cv_button = ttk.Button(footer, text="Generate Tailored CV", command=lambda: self._generate("CV"))
-        resume_button = ttk.Button(footer, text="Generate Tailored Resume", command=lambda: self._generate("Resume"))
+        cover_letter_button = ttk.Button(footer, text="Generate Tailored Covering Letter", command=lambda: self._generate("Covering Letter"))
         cv_button.grid(row=0, column=2, padx=6)
-        resume_button.grid(row=0, column=3, padx=6)
-        self.generate_buttons = [cv_button, resume_button]
+        cover_letter_button.grid(row=0, column=3, padx=6)
+        self.generate_buttons = [cv_button, cover_letter_button]
 
 
     def _build_workspace_tab(self, parent: ttk.Frame) -> None:
@@ -184,7 +184,7 @@ class ResumeAIApp(tk.Tk):
             "1.0",
             "Workflow:\n"
             "1. Create a new application workspace for each job.\n"
-            "2. Paste the job description and generate the resume or CV.\n"
+            "2. Paste the job description and generate the CV or covering letter.\n"
             "3. Run quality checks and AI review.\n"
             "4. Save the application before closing the app.\n\n"
             "This is not just convenience. Without saved application workspaces, you cannot manage multiple applications professionally.",
@@ -250,24 +250,31 @@ class ResumeAIApp(tk.Tk):
         parent.rowconfigure(1, weight=1)
 
         ttk.Label(parent, text="General CV").grid(row=0, column=0, sticky="w")
-        ttk.Label(parent, text="General Resume").grid(row=0, column=1, sticky="w")
+        ttk.Label(parent, text="General Covering Letter").grid(row=0, column=1, sticky="w")
 
         self.general_cv_text = tk.Text(parent, wrap="word")
-        self.general_resume_text = tk.Text(parent, wrap="word")
+        self.general_cover_letter_text = tk.Text(parent, wrap="word")
+        # Legacy alias. Older app versions called this field general_resume.
+        self.general_resume_text = self.general_cover_letter_text
         self.general_cv_text.grid(row=1, column=0, sticky="nsew", padx=(0, 6), pady=8)
-        self.general_resume_text.grid(row=1, column=1, sticky="nsew", padx=(6, 0), pady=8)
+        self.general_cover_letter_text.grid(row=1, column=1, sticky="nsew", padx=(6, 0), pady=8)
         self.multi_line_fields["general_cv"] = self.general_cv_text
-        self.multi_line_fields["general_resume"] = self.general_resume_text
+        self.multi_line_fields["general_cover_letter"] = self.general_cover_letter_text
 
         cv_buttons = ttk.Frame(parent)
-        resume_buttons = ttk.Frame(parent)
+        cover_letter_buttons = ttk.Frame(parent)
         cv_buttons.grid(row=2, column=0, sticky="w")
-        resume_buttons.grid(row=2, column=1, sticky="w")
+        cover_letter_buttons.grid(row=2, column=1, sticky="w")
 
         ttk.Button(cv_buttons, text="Load CV .txt/.md", command=lambda: self._load_file_into_text(self.general_cv_text)).pack(side="left")
         ttk.Button(cv_buttons, text="Clear", command=lambda: self._clear_text(self.general_cv_text)).pack(side="left", padx=8)
+<<<<<<< Updated upstream
         ttk.Button(resume_buttons, text="Load Resume .txt/.md", command=lambda: self._load_file_into_text(self.general_resume_text)).pack(side="left")
         ttk.Button(resume_buttons, text="Clear", command=lambda: self._clear_text(self.general_resume_text)).pack(side="left", padx=8)
+=======
+        ttk.Button(cover_letter_buttons, text="Load Covering Letter PDF/Text", command=lambda: self._load_file_into_text(self.general_cover_letter_text)).pack(side="left")
+        ttk.Button(cover_letter_buttons, text="Clear", command=lambda: self._clear_text(self.general_cover_letter_text)).pack(side="left", padx=8)
+>>>>>>> Stashed changes
 
     def _build_template_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(1, weight=1)
@@ -329,7 +336,7 @@ class ResumeAIApp(tk.Tk):
         ttk.Button(button_frame, text="Preview Prompt", command=self._preview_ai_prompt).pack(side="left", padx=8)
         ttk.Button(button_frame, text="Clear Session API Key", command=lambda: self.ai_api_key_var.set("")).pack(side="left")
         ttk.Label(button_frame, text="Preview type").pack(side="left", padx=(18, 4))
-        ttk.Combobox(button_frame, textvariable=self.prompt_preview_type_var, values=["Resume", "CV"], width=10, state="readonly").pack(side="left")
+        ttk.Combobox(button_frame, textvariable=self.prompt_preview_type_var, values=["Covering Letter", "CV"], width=10, state="readonly").pack(side="left")
 
         self.ai_help_text = tk.Text(parent, height=6, wrap="word")
         self.ai_help_text.grid(row=12, column=0, columnspan=2, sticky="nsew", pady=(8, 0))
@@ -427,7 +434,9 @@ class ResumeAIApp(tk.Tk):
             "profile": profile.to_dict(),
             "job_description": self.job_description_text.get("1.0", tk.END).strip(),
             "general_cv": self.general_cv_text.get("1.0", tk.END).strip(),
-            "general_resume": self.general_resume_text.get("1.0", tk.END).strip(),
+            "general_cover_letter": self.general_cover_letter_text.get("1.0", tk.END).strip(),
+            # Legacy key kept for old integrations and existing workspace tools.
+            "general_resume": self.general_cover_letter_text.get("1.0", tk.END).strip(),
             "settings": {
                 "template_name": self.template_var.get(),
                 "pdf_template": self.pdf_template_var.get(),
@@ -475,8 +484,14 @@ class ResumeAIApp(tk.Tk):
 
         self.general_cv_text.delete("1.0", tk.END)
         self.general_cv_text.insert("1.0", data.get("general_cv", profile_data.get("general_cv", "")))
-        self.general_resume_text.delete("1.0", tk.END)
-        self.general_resume_text.insert("1.0", data.get("general_resume", profile_data.get("general_resume", "")))
+        cover_letter_source = (
+            data.get("general_cover_letter")
+            or profile_data.get("general_cover_letter")
+            or data.get("general_resume")
+            or profile_data.get("general_resume", "")
+        )
+        self.general_cover_letter_text.delete("1.0", tk.END)
+        self.general_cover_letter_text.insert("1.0", cover_letter_source)
 
         self.template_var.set(settings.get("template_name", self.template_var.get()))
         self.pdf_template_var.set(settings.get("pdf_template", self.pdf_template_var.get()))
@@ -527,7 +542,7 @@ class ResumeAIApp(tk.Tk):
 
         self.job_description_text.delete("1.0", tk.END)
         self.general_cv_text.delete("1.0", tk.END)
-        self.general_resume_text.delete("1.0", tk.END)
+        self.general_cover_letter_text.delete("1.0", tk.END)
         self.output_text.delete("1.0", tk.END)
         self._clear_quality_report()
         self.last_generation_request = None
@@ -595,13 +610,18 @@ class ResumeAIApp(tk.Tk):
             var.set(data.get(key, ""))
         for key, widget in self.multi_line_fields.items():
             widget.delete("1.0", tk.END)
-            widget.insert("1.0", data.get(key, ""))
+            value = data.get(key, "")
+            if key == "general_cover_letter" and not value:
+                value = data.get("general_resume", "")
+            widget.insert("1.0", value)
         self.status_var.set("Loaded saved profile")
 
     def _collect_profile(self) -> CandidateProfile:
         data = {key: var.get().strip() for key, var in self.single_line_fields.items()}
         for key, widget in self.multi_line_fields.items():
             data[key] = widget.get("1.0", tk.END).strip()
+        # Keep the legacy general_resume field mirrored so older workspace/profile files remain compatible.
+        data["general_resume"] = data.get("general_cover_letter", "")
         return CandidateProfile(**data)
 
     def _collect_ai_settings(self) -> AISettings:
@@ -657,7 +677,8 @@ class ResumeAIApp(tk.Tk):
         try:
             result = self.ai_service.generate(request)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"{request.document_type.lower()}_{request.profile.name}_{timestamp}.md"
+            document_slug = self._document_slug(request.document_type)
+            filename = f"{document_slug}_{request.profile.name}_{timestamp}.md"
             saved_path = save_markdown(filename, result)
             self.after(0, lambda: self._finish_generation(request, result, saved_path))
         except Exception as exc:
@@ -745,7 +766,7 @@ class ResumeAIApp(tk.Tk):
                 ai_settings=self._collect_ai_settings(),
             )
 
-        document_type = "CV" if self.last_document_type.lower() == "cv" else "Resume"
+        document_type = "CV" if self.last_document_type.lower() == "cv" else "Covering Letter"
         return GenerationRequest(
             profile=self._collect_profile(),
             job_description=self.job_description_text.get("1.0", tk.END).strip(),
@@ -938,7 +959,8 @@ class ResumeAIApp(tk.Tk):
             )
             markdown_report = format_quality_report(report)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"improved_{request.document_type.lower()}_{request.profile.name}_{timestamp}.md"
+            document_slug = self._document_slug(request.document_type)
+            filename = f"improved_{document_slug}_{request.profile.name}_{timestamp}.md"
             saved_path = save_markdown(filename, result)
             self.after(0, lambda current_job_id=job_id: self._finish_quality_improvement(current_job_id, request, result, saved_path, markdown_report, report.score))
         except Exception as exc:
@@ -1008,7 +1030,7 @@ class ResumeAIApp(tk.Tk):
         messagebox.showerror(
             "Quality improvement timed out",
             "Ollama did not finish the improvement within the timeout window. "
-            f"Current timeout: {timeout_seconds} seconds. Try again with qwen3:8b, increase the timeout, or shorten the resume/job description. "
+            f"Current timeout: {timeout_seconds} seconds. Try again with qwen3:8b, increase the timeout, or shorten the document/job description. "
             "If Ollama finishes later, that stale result will be ignored.",
         )
 
@@ -1080,6 +1102,9 @@ class ResumeAIApp(tk.Tk):
 
     def _clear_text(self, widget: tk.Text) -> None:
         widget.delete("1.0", tk.END)
+
+    def _document_slug(self, document_type: str) -> str:
+        return (document_type or "document").strip().lower().replace(" ", "_")
 
     def _safe_filename(self, filename: str) -> str:
         allowed = []
