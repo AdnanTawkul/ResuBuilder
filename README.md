@@ -12,6 +12,12 @@ Resume AI 2 is a Python desktop app that helps tailor CVs and resumes to a speci
 - Generate tailored resume button.
 - Markdown output saved to the `exports` folder.
 - PDF export from the generated output.
+- Selectable PDF templates:
+  - ATS Friendly
+  - Professional
+  - Modern
+  - Academic CV
+- A4 and Letter PDF page sizes.
 - Local candidate profile saved to the `data` folder.
 - Optional OpenAI integration when `OPENAI_API_KEY` is available.
 
@@ -31,6 +37,8 @@ resume_ai_2/
         ├── ai_service.py
         ├── gui.py
         ├── models.py
+        ├── pdf_exporter.py
+        ├── pdf_templates.py
         ├── storage.py
         └── templates.py
 ```
@@ -52,6 +60,16 @@ Run this after pulling or copying project updates that change `requirements.txt`
 3. Select the `resume_ai_2` folder.
 4. Open `app.py`.
 5. Click the green run button.
+
+## Export a PDF
+
+1. Fill in the personal information.
+2. Paste a job description.
+3. Choose a writing template in the **Templates** tab.
+4. Click **Generate Tailored CV** or **Generate Tailored Resume**.
+5. Open the **Output** tab.
+6. Choose a PDF template and page size.
+7. Click **Export Output as PDF**.
 
 ## Optional AI setup
 
@@ -82,23 +100,17 @@ export OPENAI_API_KEY="your_api_key_here"
 ## GitHub Desktop workflow
 
 1. Open GitHub Desktop.
-2. Click **File > Add Local Repository**.
-3. Choose the `resume_ai_2` folder.
-4. If GitHub Desktop says it is not a repository, click **create a repository**.
-5. Write a commit summary such as `Create initial GUI app`.
-6. Click **Commit to main**.
-7. Click **Publish repository**.
+2. Make sure the current repository is `ResuBuilder` or your actual project folder.
+3. Review changed files before committing.
+4. Write a clear commit summary.
+5. Click **Commit to main**.
+6. Click **Push origin**.
 
-## Recommended commit habit
+Good commit examples:
 
-Make one small commit after each working feature:
-
-- `Create initial project structure`
-- `Add GUI tabs`
-- `Add profile saving`
-- `Add document generation service`
-- `Add template selector`
-- `Add AI integration`
+- `Create initial GUI app`
 - `Add PDF export`
+- `Add selectable PDF templates`
+- `Improve resume layout styles`
 
-Do not make one huge commit after days of work. That is how messy projects become impossible to review.
+Do not make one huge commit after days of work. Small commits are easier to review, easier to debug, and more professional on GitHub.

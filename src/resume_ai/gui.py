@@ -9,6 +9,7 @@ from tkinter import ttk
 from .ai_service import AIService
 from .models import CandidateProfile, GenerationRequest
 from .pdf_exporter import export_markdown_to_pdf
+from .pdf_templates import get_pdf_template_names, PDF_TEMPLATES
 from .storage import EXPORT_DIR, load_json, save_json, save_markdown
 from .templates import get_template_names, TEMPLATES
 
@@ -25,6 +26,7 @@ class ResumeAIApp(tk.Tk):
         self.multi_line_fields: dict[str, tk.Text] = {}
         self.template_var = tk.StringVar(value="ATS Friendly")
         self.pdf_page_size_var = tk.StringVar(value="A4")
+        self.pdf_template_var = tk.StringVar(value="ATS Friendly")
         self.status_var = tk.StringVar(value="Ready")
         self.last_document_type = "document"
         self.last_candidate_name = "candidate"
@@ -171,6 +173,8 @@ class ResumeAIApp(tk.Tk):
         buttons.grid(row=2, column=0, sticky="ew")
         ttk.Button(buttons, text="Save Output as Markdown", command=self._save_output).pack(side="left")
         ttk.Button(buttons, text="Export Output as PDF", command=self._export_output_pdf).pack(side="left", padx=8)
+        ttk.Label(buttons, text="PDF template").pack(side="left", padx=(12, 4))
+        ttk.Combobox(buttons, textvariable=self.pdf_template_var, values=get_pdf_template_names(), width=16, state="readonly").pack(side="left")
         ttk.Label(buttons, text="Page size").pack(side="left", padx=(12, 4))
         ttk.Combobox(buttons, textvariable=self.pdf_page_size_var, values=["A4", "Letter"], width=8, state="readonly").pack(side="left")
         ttk.Button(buttons, text="Clear Output", command=lambda: self._clear_text(self.output_text)).pack(side="left", padx=8)
@@ -257,7 +261,12 @@ class ResumeAIApp(tk.Tk):
             return
 
         try:
-            saved_path = export_markdown_to_pdf(content, path, page_size=self.pdf_page_size_var.get())
+            saved_path = export_markdown_to_pdf(
+                content,
+                path,
+                page_size=self.pdf_page_size_var.get(),
+                template_name=self.pdf_template_var.get(),
+            )
         except Exception as exc:
             messagebox.showerror("PDF export failed", f"Could not export PDF:\n{exc}")
             self.status_var.set("PDF export failed")
@@ -293,11 +302,14 @@ class ResumeAIApp(tk.Tk):
     def _update_template_description(self) -> None:
         selected = self.template_var.get()
         template = TEMPLATES.get(selected, TEMPLATES["ATS Friendly"])
+        pdf_template = PDF_TEMPLATES.get(selected)
+        pdf_note = pdf_template.description if pdf_template else "PDF export also supports selectable layouts in the Output tab."
         content = (
             f"{selected}\n\n"
-            f"Purpose: {template['description']}\n\n"
-            f"Tone: {template['tone']}\n\n"
-            "Current version creates Markdown and PDF output. Later versions should add stronger visual templates, validation, and saved template presets."
+            f"AI writing purpose: {template['description']}\n\n"
+            f"AI writing tone: {template['tone']}\n\n"
+            f"PDF layout: {pdf_note}\n\n"
+            "Use the template selector for writing style, then choose the PDF template in the Output tab before exporting."
         )
         self.template_description.configure(state="normal")
         self.template_description.delete("1.0", tk.END)
