@@ -25,12 +25,14 @@
 - Truth-aware quality scoring
 - Supported vs unsupported job signal reporting
 - Quality-fix prompts that avoid impossible keyword chasing
+- Application workspace save/load
 
 ## Next
 
-1. Add a pre-generation job fit diagnosis screen.
-2. Add structured evidence fields for each project and job.
-3. Add guided questions for unsupported job signals.
-4. Add resume version history.
+1. Add structured evidence fields for each project and job.
+2. Add guided questions for unsupported job signals.
+3. Add resume version history inside each application workspace.
+4. Add export folder generation per application.
 5. Add local project settings file.
-6. Package the app as a Windows executable.
+6. Import existing PDF resume/CV.
+7. Package the app as a Windows executable.
