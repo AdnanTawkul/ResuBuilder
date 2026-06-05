@@ -18,11 +18,19 @@
 - Quality improvement wait screen
 - Quality improvement timeout guard
 - Ollama non-thinking request mode
+- Improved AI output structure
+- Better job keyword extraction
+- Candidate evidence mapping
+- Contact-header repair for generated documents
+- Truth-aware quality scoring
+- Supported vs unsupported job signal reporting
+- Quality-fix prompts that avoid impossible keyword chasing
 
 ## Next
 
-1. Improve keyword extraction quality.
-2. Add job fit diagnosis before generation.
-3. Add resume version history.
-4. Add local project settings file.
-5. Package the app as a Windows executable.
+1. Add a pre-generation job fit diagnosis screen.
+2. Add structured evidence fields for each project and job.
+3. Add guided questions for unsupported job signals.
+4. Add resume version history.
+5. Add local project settings file.
+6. Package the app as a Windows executable.

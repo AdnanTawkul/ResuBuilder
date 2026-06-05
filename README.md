@@ -22,6 +22,14 @@ Resume AI 2 is a local desktop application for tailoring resumes and CVs to a sp
 - Quality-improvement timeout guard
 - Ollama non-thinking request mode for faster resume fixes
 - Markdown code-fence cleanup for local model output
+- Better job-signal extraction that ignores job-posting filler words
+- Candidate evidence map added to generation and improvement prompts
+- Stronger required Markdown structure for AI outputs
+- Automatic contact-header repair when the model omits supplied contact details
+- Lower-temperature Ollama settings for more consistent local output
+- Truth-aware quality scoring that separates supported job signals from unsupported job-fit gaps
+- Improved quality recommendations that stop chasing impossible keywords
+- Improvement prompts now target only truthful supported gaps
 
 ## Run the app
 
@@ -78,5 +86,17 @@ feature/local-ai-provider
 Recommended commit for this update:
 
 ```text
-Fix quality improvement timeout and output refresh
+Add truth-aware quality scoring
+```
+
+
+## Why regeneration may not raise the score
+
+If the job asks for audio processing, embedded systems, DevOps, clients, or research, but the candidate profile does not contain truthful evidence for those signals, the app must not invent them. In that case, the correct fix is to add real evidence to the Personal Info fields, not to regenerate forever.
+
+Step 12 separates:
+
+```text
+Supported job signals = safe to surface in the resume
+Unsupported job signals = job-fit gaps; do not add unless truthful
 ```

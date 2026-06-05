@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from typing import Optional
 
 from .models import AISettings, GenerationRequest
 from .templates import get_template
+from .quality_checker import extract_job_keywords, build_truth_aware_signal_report, split_keywords_by_candidate_evidence
 
 
 class AIService:
@@ -161,7 +163,7 @@ class AIService:
                 text = self._extract_ollama_text(response).strip()
                 if not text:
                     return "Ollama returned an empty improved document. Add more candidate evidence or try again."
-                return self._clean_local_model_output(text)
+                return self._postprocess_generated_document(text, request)
             except Exception as exc:
                 return f"Ollama improvement failed: {exc}"
 
@@ -180,7 +182,7 @@ class AIService:
                     max_output_tokens=5000,
                 )
                 text = (response.output_text or "").strip()
-                return text if text else "OpenAI returned an empty improved document."
+                return self._postprocess_generated_document(text, request) if text else "OpenAI returned an empty improved document."
             except Exception as exc:
                 return f"OpenAI improvement failed: {exc}"
 
@@ -257,7 +259,7 @@ class AIService:
             text = (response.output_text or "").strip()
             if not text:
                 return "OpenAI returned an empty document. Try a different model or add more candidate details."
-            return text
+            return self._postprocess_generated_document(text, request)
         except Exception as exc:
             fallback = self._generate_local_draft(request, note="OpenAI generation failed.")
             return (
@@ -283,7 +285,7 @@ class AIService:
             text = self._extract_ollama_text(response).strip()
             if not text:
                 return "Ollama returned an empty document. Check the model name or add more candidate details."
-            return self._clean_local_model_output(text)
+            return self._postprocess_generated_document(text, request)
         except Exception as exc:
             fallback = self._generate_local_draft(request, note="Ollama generation failed.")
             return (
@@ -310,8 +312,10 @@ class AIService:
             "think": False,
             "options": {
                 "temperature": self._temperature_for_mode(settings.generation_mode),
+                "top_p": 0.85,
+                "repeat_penalty": 1.08,
                 "num_predict": int(num_predict),
-                "num_ctx": 8192,
+                "num_ctx": 12288,
             },
         }
         request = urllib.request.Request(
@@ -353,13 +357,70 @@ class AIService:
 
         return cleaned.strip()
 
+    def _postprocess_generated_document(self, text: str, request: GenerationRequest) -> str:
+        """Clean model artifacts and enforce minimum resume structure."""
+        cleaned = self._clean_local_model_output(text)
+        cleaned = self._strip_non_document_preface(cleaned)
+        cleaned = self._ensure_contact_header(cleaned, request)
+        return cleaned.strip()
+
+    def _strip_non_document_preface(self, text: str) -> str:
+        cleaned = text.strip()
+        lower = cleaned.lower()
+        for marker in ["# ", "## "]:
+            idx = lower.find(marker)
+            if idx > 0 and any(bad in lower[:idx] for bad in ["here is", "here's", "improved", "tailored", "resume", "cv"]):
+                cleaned = cleaned[idx:].strip()
+                lower = cleaned.lower()
+                break
+        cleaned = re.sub(r"^\s*(here is|here's)\b.*?\n+", "", cleaned, flags=re.IGNORECASE | re.DOTALL).strip()
+        return cleaned
+
+    def _ensure_contact_header(self, text: str, request: GenerationRequest) -> str:
+        profile = request.profile
+        cleaned = text.strip()
+        lower = cleaned.lower()
+        digits = re.sub(r"\D", "", cleaned)
+        phone_digits = re.sub(r"\D", "", profile.phone or "")
+
+        missing_name = bool(profile.name and profile.name.lower() not in lower[:500])
+        missing_email = bool(profile.email and profile.email.lower() not in lower[:700])
+        missing_phone = bool(phone_digits and phone_digits not in digits[:900])
+        missing_heading = not bool(re.search(r"^#{1,2}\s+", cleaned, flags=re.MULTILINE))
+
+        if not (missing_name or missing_email or missing_phone or missing_heading):
+            return cleaned
+
+        header_lines = []
+        header_lines.append(f"# {profile.name or 'Candidate'}")
+        if profile.title:
+            header_lines.append(profile.title)
+
+        contact_parts = []
+        if profile.email:
+            contact_parts.append(f"Email: {profile.email}")
+        if profile.phone:
+            contact_parts.append(f"Phone: {profile.phone}")
+        if profile.location:
+            contact_parts.append(f"Location: {profile.location}")
+        if contact_parts:
+            header_lines.append(" | ".join(contact_parts))
+        if profile.links:
+            header_lines.append(f"Links: {profile.links}")
+
+        header = "\n".join(header_lines).strip()
+        # If the model already started with the candidate name but forgot contact details, replace only the first loose name line.
+        if profile.name and cleaned.lower().startswith(profile.name.lower()):
+            cleaned = re.sub(r"^" + re.escape(profile.name) + r"\s*\n*", "", cleaned, count=1, flags=re.IGNORECASE).strip()
+        return f"{header}\n\n{cleaned}".strip()
+
     def _temperature_for_mode(self, mode: str) -> float:
         normalized = (mode or "Balanced").strip().lower()
         if normalized == "conservative":
-            return 0.2
+            return 0.15
         if normalized == "aggressive":
-            return 0.7
-        return 0.4
+            return 0.45
+        return 0.25
 
     def _build_generation_prompt(self, request: GenerationRequest) -> tuple[str, str]:
         profile = request.profile
@@ -367,22 +428,42 @@ class AIService:
         mode = request.ai_settings.generation_mode.strip() or "Balanced"
         source_document = profile.general_cv if request.document_type.lower() == "cv" else profile.general_resume
         alternate_source = profile.general_resume if request.document_type.lower() == "cv" else profile.general_cv
+        job_signals = extract_job_keywords(request.job_description, limit=24)
+        supported_signals, unsupported_signals = split_keywords_by_candidate_evidence(job_signals, profile)
+        evidence_map = self._build_evidence_map(profile, job_signals)
+        truth_aware_signal_report = build_truth_aware_signal_report(profile, request.job_description, limit=24)
+        required_structure = self._required_document_structure(request.document_type)
 
         instructions = f"""
+/no_think
 You are an expert career document strategist and resume writer.
 Create a tailored {request.document_type} for the target job.
-Output clean Markdown only. Do not wrap the answer in code fences.
+Output the final document only, in clean Markdown. Do not wrap the answer in code fences.
 Do not reveal chain-of-thought, hidden reasoning, thinking notes, analysis notes, or implementation details.
 
 Hard rules:
-1. Never invent employers, degrees, dates, certifications, tools, metrics, titles, publications, grants, or achievements.
-2. If the candidate input lacks a metric, write a strong but truthful bullet without fake numbers.
-3. Prioritize evidence that matches the job description.
-4. Mirror relevant job-description language only when it is truthful for the candidate.
-5. Remove weak, irrelevant, repetitive, or outdated information.
-6. Do not include commentary, analysis, warnings, or tailoring notes in the final document.
-7. Keep formatting ATS-safe. Use Markdown headings and bullet lists.
-8. Make the first third of the document the strongest part.
+1. Never invent employers, degrees, dates, certifications, tools, metrics, titles, publications, grants, clients, or achievements.
+2. Never omit supplied contact details. The first lines must include name, email, phone, and location when supplied.
+3. Use simple Markdown headings. No tables, no icons, no decorative separators, no code fences.
+4. Use only job keywords that are supported by candidate evidence.
+5. If a job keyword is not supported by candidate evidence, do not force it into the document.
+6. Every bullet must contain an action, a tool/method/domain detail, and a business or technical purpose where truthful.
+7. Do not write generic motivational language such as passionate, excited, fantastic opportunity, team player, or hardworking.
+8. Remove weak, irrelevant, repetitive, or outdated information.
+9. Make the first third of the document the strongest part.
+10. Return only the completed {request.document_type}. No explanation before or after it.
+
+Required structure:
+{required_structure}
+
+High-priority job signals extracted from the job description:
+{', '.join(job_signals) if job_signals else 'No strong job signals detected. Use the candidate evidence and target title.'}
+
+Truth-aware signal report:
+{truth_aware_signal_report}
+
+Candidate evidence map:
+{evidence_map}
 
 Template style: {request.template_name}
 Template purpose: {template['description']}
@@ -390,15 +471,9 @@ Tone: {template['tone']}
 Generation mode: {mode}
 
 Mode guidance:
-- Conservative: preserve the candidate's original wording more closely and make minimal claims.
+- Conservative: preserve the candidate's original facts and wording more closely.
 - Balanced: improve clarity, ordering, impact, and keyword alignment without overreaching.
-- Aggressive: make the positioning sharper and more competitive, but still do not invent facts.
-
-Document rules:
-- Resume: target 1 to 2 pages worth of Markdown content. Be concise.
-- CV: can be longer and more complete. Include education, projects, research, publications, teaching, and languages when supplied.
-- Use the candidate's real contact details at the top.
-- Avoid empty sections. If no evidence exists for a section, omit it.
+- Aggressive: sharpen positioning but still do not invent facts.
 """.strip()
 
         user_input = f"""
@@ -431,6 +506,21 @@ Skills:
 Languages:
 {profile.languages}
 
+JOB SIGNALS TO USE ONLY IF SUPPORTED:
+{', '.join(job_signals) if job_signals else 'None detected'}
+
+SUPPORTED SIGNALS TO SURFACE:
+{', '.join(supported_signals) if supported_signals else 'None clearly supported yet'}
+
+UNSUPPORTED SIGNALS TO AVOID UNLESS USER ADDS TRUTHFUL EVIDENCE:
+{', '.join(unsupported_signals) if unsupported_signals else 'None'}
+
+TRUTH-AWARE SIGNAL REPORT:
+{truth_aware_signal_report}
+
+EVIDENCE MAP:
+{evidence_map}
+
 PRIMARY EXISTING SOURCE DOCUMENT:
 {source_document}
 
@@ -446,6 +536,11 @@ TARGET JOB DESCRIPTION:
         profile = request.profile
         source_document = profile.general_cv if request.document_type.lower() == "cv" else profile.general_resume
         alternate_source = profile.general_resume if request.document_type.lower() == "cv" else profile.general_cv
+        job_signals = extract_job_keywords(request.job_description, limit=24)
+        supported_signals, unsupported_signals = split_keywords_by_candidate_evidence(job_signals, profile)
+        evidence_map = self._build_evidence_map(profile, job_signals)
+        truth_aware_signal_report = build_truth_aware_signal_report(profile, request.job_description, limit=24)
+        required_structure = self._required_document_structure(request.document_type)
 
         instructions = f"""
 You are a strict resume and CV quality reviewer.
@@ -457,8 +552,10 @@ Hard rules:
 1. Do not rewrite the full resume or CV. Review it.
 2. Identify unsupported claims, fake-looking metrics, placeholders, weak bullets, and keyword gaps.
 3. Do not suggest adding a keyword unless it is truthful based on candidate evidence.
-4. Separate critical fixes from optional improvements.
-5. Be direct and specific.
+4. Separate missing supported signals from unsupported job-fit gaps.
+5. Say clearly when regeneration cannot improve the score without more candidate evidence.
+6. Separate critical fixes from optional improvements.
+7. Be direct and specific.
 
 Required Markdown sections:
 # AI Quality Review
@@ -499,6 +596,21 @@ Skills:
 Languages:
 {profile.languages}
 
+JOB SIGNALS TO USE ONLY IF SUPPORTED:
+{', '.join(job_signals) if job_signals else 'None detected'}
+
+SUPPORTED SIGNALS TO SURFACE:
+{', '.join(supported_signals) if supported_signals else 'None clearly supported yet'}
+
+UNSUPPORTED SIGNALS TO AVOID UNLESS USER ADDS TRUTHFUL EVIDENCE:
+{', '.join(unsupported_signals) if unsupported_signals else 'None'}
+
+TRUTH-AWARE SIGNAL REPORT:
+{truth_aware_signal_report}
+
+EVIDENCE MAP:
+{evidence_map}
+
 PRIMARY EXISTING SOURCE DOCUMENT:
 {source_document}
 
@@ -526,6 +638,11 @@ HEURISTIC QUALITY REPORT:
         profile = request.profile
         source_document = profile.general_cv if request.document_type.lower() == "cv" else profile.general_resume
         alternate_source = profile.general_resume if request.document_type.lower() == "cv" else profile.general_cv
+        job_signals = extract_job_keywords(request.job_description, limit=24)
+        supported_signals, unsupported_signals = split_keywords_by_candidate_evidence(job_signals, profile)
+        evidence_map = self._build_evidence_map(profile, job_signals)
+        truth_aware_signal_report = build_truth_aware_signal_report(profile, request.job_description, limit=24)
+        required_structure = self._required_document_structure(request.document_type)
 
         instructions = f"""
 You are an expert resume and CV editor.
@@ -540,11 +657,13 @@ Hard rules:
 2. Do not add consulting, DevOps, ETL, REST, cloud, architecture, or client-facing claims unless the candidate evidence clearly supports them.
 3. If the job uses a keyword but the candidate evidence does not support it, omit the keyword instead of faking alignment.
 4. Improve keyword alignment only by surfacing truthful evidence already present in candidate details or source documents.
-5. Rewrite weak bullets as action + tool/method + result/business purpose.
-6. Keep ATS-safe formatting: plain headings, plain bullets, no tables, no icons, no decorative separators.
-7. Preserve real contact details at the top.
-8. Remove duplicate, irrelevant, weak, or unsupported content.
-9. Keep the resume concise. Keep the CV complete but still focused.
+5. Prioritize missing supported signals over unsupported job-fit gaps.
+6. If a quality report lists unsupported job signals, do not chase them. Improve the document around supported signals, contact, headings, ordering, and bullet evidence.
+7. Rewrite weak bullets as action + tool/method + result/business purpose.
+8. Keep ATS-safe formatting: plain headings, plain bullets, no tables, no icons, no decorative separators.
+9. Preserve real contact details at the top.
+10. Remove duplicate, irrelevant, weak, or unsupported content.
+11. Keep the resume concise. Keep the CV complete but still focused.
 
 Use non-thinking mode. /no_think
 """.strip()
@@ -579,6 +698,21 @@ Skills:
 Languages:
 {profile.languages}
 
+JOB SIGNALS TO USE ONLY IF SUPPORTED:
+{', '.join(job_signals) if job_signals else 'None detected'}
+
+SUPPORTED SIGNALS TO SURFACE:
+{', '.join(supported_signals) if supported_signals else 'None clearly supported yet'}
+
+UNSUPPORTED SIGNALS TO AVOID UNLESS USER ADDS TRUTHFUL EVIDENCE:
+{', '.join(unsupported_signals) if unsupported_signals else 'None'}
+
+TRUTH-AWARE SIGNAL REPORT:
+{truth_aware_signal_report}
+
+EVIDENCE MAP:
+{evidence_map}
+
 PRIMARY EXISTING SOURCE DOCUMENT:
 {source_document}
 
@@ -601,6 +735,92 @@ TASK:
 Return only the improved {request.document_type}. No commentary. No code fence.
 """.strip()
         return instructions, user_input
+
+    def _required_document_structure(self, document_type: str) -> str:
+        if (document_type or "").lower() == "cv":
+            return """# Candidate Name
+Title
+Email: name@example.com | Phone: number | Location: city
+Links: portfolio/linkedin/github
+
+## Professional Summary
+2 to 4 lines focused on the target role.
+
+## Core Skills
+Plain comma-separated or short bullet list of truthful skills.
+
+## Education
+Degree, school, dates, focus areas.
+
+## Professional Experience
+### Role | Organization | Location | Dates
+- Action + tool/method/domain detail + result or technical purpose.
+
+## Projects
+- Project + tools/methods + outcome or purpose.
+
+## Languages
+Only when supplied."""
+        return """# Candidate Name
+Title
+Email: name@example.com | Phone: number | Location: city
+Links: portfolio/linkedin/github
+
+## Professional Summary
+2 to 3 lines focused on the target role.
+
+## Core Skills
+Plain comma-separated or short bullet list of truthful skills.
+
+## Professional Experience
+### Role | Organization | Location | Dates
+- Action + tool/method/domain detail + result or technical purpose.
+
+## Projects
+- Project + tools/methods + outcome or purpose.
+
+## Education
+Degree, school, dates, focus areas."""
+
+    def _build_evidence_map(self, profile, job_signals: list[str]) -> str:
+        source = "\n".join([
+            profile.summary,
+            profile.studies,
+            profile.professions,
+            profile.projects,
+            profile.skills,
+            profile.languages,
+            profile.general_cv,
+            profile.general_resume,
+        ]).lower()
+        if not job_signals:
+            return "No extracted job signals. Rely on supplied candidate details only."
+
+        support_variants = {
+            "api": {"api", "apis", "rest"},
+            "rest api": {"rest", "api", "apis", "rest api"},
+            "deep learning": {"deep learning", "neural", "tensorflow", "pytorch", "model"},
+            "machine learning": {"machine learning", "ml", "model", "tensorflow", "pytorch"},
+            "computer vision": {"computer vision", "image processing", "opencv", "microscopy"},
+            "audio processing": {"audio", "audio processing", "audio signal processing", "speech", "speech processing"},
+            "audio": {"audio", "audio processing", "speech", "speech processing"},
+            "signal processing": {"signal processing", "eeg", "audio", "time series"},
+            "models": {"model", "models", "deep learning", "machine learning", "tensorflow", "pytorch", "neural"},
+            "algorithms": {"algorithm", "algorithms", "computer vision", "image processing", "deep learning"},
+            "research": {"research", "thesis", "study", "evaluated", "investigated", "experiment"},
+            "training": {"training", "trained", "model training", "tensorflow", "pytorch"},
+            "quality": {"quality", "validation", "testing", "qa", "reliability", "validated"},
+            "embedded": {"embedded", "hardware", "device", "devices", "sensor", "wearable", "edge"},
+            "embedded systems": {"embedded", "hardware", "device", "devices", "sensor", "wearable", "edge"},
+        }
+
+        lines = []
+        for signal in job_signals[:24]:
+            variants = {signal.lower(), signal.lower().replace("-", " ")}
+            variants.update(support_variants.get(signal.lower(), set()))
+            supported = any(v and v in source for v in variants)
+            lines.append(f"- {signal}: {'supported by candidate evidence' if supported else 'not clearly supported, do not force'}")
+        return "\n".join(lines)
 
     def _generate_local_draft(self, request: GenerationRequest, note: str = "AI was not used for this draft.") -> str:
         profile = request.profile
@@ -660,15 +880,4 @@ Return only the improved {request.document_type}. No commentary. No code fence.
         return "\n".join(f"- {item}" for item in items)
 
     def _extract_keywords(self, job_description: str) -> list[str]:
-        important_terms = []
-        candidates = [
-            "python", "sql", "excel", "machine learning", "data analysis", "project management",
-            "leadership", "communication", "cloud", "aws", "azure", "docker", "git", "api",
-            "customer", "sales", "marketing", "research", "finance", "automation", "ai",
-            "quality", "testing", "agile", "scrum", "stakeholder", "reporting",
-        ]
-        lower_text = job_description.lower()
-        for term in candidates:
-            if term in lower_text:
-                important_terms.append(term)
-        return important_terms[:12]
+        return extract_job_keywords(job_description, limit=12)
