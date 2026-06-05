@@ -3,20 +3,32 @@ __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+
+# Virtual environments
 .venv/
 venv/
-.env
+env/
 
-# App data
-data/
-exports/*.md
-exports/*.pdf
-exports/*.txt
-
-# IDE
+# PyCharm
 .idea/
-.vscode/
 
-# OS
+# Secrets and local environment files
+.env
+.env.*
+
+# Generated/private user data
+exports/
+data/profile.json
+data/applications/*.json
+
+# OS files
 .DS_Store
 Thumbs.db
+
+# Generated documents
+*.pdf
+*.docx
+
+# Local saved application workspaces
+data/applications/
+data/exports/

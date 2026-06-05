@@ -14,6 +14,13 @@ from .pdf_templates import get_pdf_template_names, PDF_TEMPLATES
 from .quality_checker import analyze_document, format_quality_report
 from .storage import EXPORT_DIR, load_json, save_json, save_markdown
 from .templates import get_template_names, TEMPLATES
+from .workspace_manager import (
+    APPLICATIONS_DIR,
+    ensure_applications_dir,
+    load_application_snapshot,
+    save_application_snapshot,
+    suggested_application_filename,
+)
 
 
 OPENAI_MODEL_OPTIONS = [
@@ -55,6 +62,13 @@ class ResumeAIApp(tk.Tk):
         self.pdf_page_size_var = tk.StringVar(value="A4")
         self.pdf_template_var = tk.StringVar(value="ATS Friendly")
         self.status_var = tk.StringVar(value="Ready")
+        self.application_name_var = tk.StringVar(value="")
+        self.application_company_var = tk.StringVar(value="")
+        self.application_role_var = tk.StringVar(value="")
+        self.application_created_var = tk.StringVar(value="")
+        self.application_modified_var = tk.StringVar(value="")
+        self.application_path_var = tk.StringVar(value="No application workspace loaded")
+        self.current_application_path: Path | None = None
         self.last_document_type = "document"
         self.last_candidate_name = "candidate"
         self.last_generation_request: GenerationRequest | None = None
@@ -89,6 +103,7 @@ class ResumeAIApp(tk.Tk):
         notebook = ttk.Notebook(self)
         notebook.grid(row=0, column=0, sticky="nsew")
 
+        workspace_tab = ttk.Frame(notebook, padding=12)
         personal_tab = ttk.Frame(notebook, padding=12)
         job_tab = ttk.Frame(notebook, padding=12)
         source_tab = ttk.Frame(notebook, padding=12)
@@ -97,6 +112,7 @@ class ResumeAIApp(tk.Tk):
         quality_tab = ttk.Frame(notebook, padding=12)
         output_tab = ttk.Frame(notebook, padding=12)
 
+        notebook.add(workspace_tab, text="Workspace")
         notebook.add(personal_tab, text="Personal Info")
         notebook.add(job_tab, text="Job Description")
         notebook.add(source_tab, text="Existing CV / Resume")
@@ -105,6 +121,7 @@ class ResumeAIApp(tk.Tk):
         notebook.add(quality_tab, text="Quality Check")
         notebook.add(output_tab, text="Output")
 
+        self._build_workspace_tab(workspace_tab)
         self._build_personal_tab(personal_tab)
         self._build_job_tab(job_tab)
         self._build_source_tab(source_tab)
@@ -124,6 +141,55 @@ class ResumeAIApp(tk.Tk):
         cv_button.grid(row=0, column=2, padx=6)
         resume_button.grid(row=0, column=3, padx=6)
         self.generate_buttons = [cv_button, resume_button]
+
+
+    def _build_workspace_tab(self, parent: ttk.Frame) -> None:
+        parent.columnconfigure(1, weight=1)
+        parent.rowconfigure(7, weight=1)
+
+        ttk.Label(parent, text="Application workspace").grid(row=0, column=0, sticky="w", pady=(0, 8))
+        ttk.Label(
+            parent,
+            text="Save one complete job application package at a time: profile, job description, generated documents, quality reports, and selected settings.",
+        ).grid(row=0, column=1, sticky="w", pady=(0, 8))
+
+        ttk.Label(parent, text="Application name").grid(row=1, column=0, sticky="w", pady=6)
+        ttk.Entry(parent, textvariable=self.application_name_var).grid(row=1, column=1, sticky="ew", pady=6)
+
+        ttk.Label(parent, text="Target company").grid(row=2, column=0, sticky="w", pady=6)
+        ttk.Entry(parent, textvariable=self.application_company_var).grid(row=2, column=1, sticky="ew", pady=6)
+
+        ttk.Label(parent, text="Target role").grid(row=3, column=0, sticky="w", pady=6)
+        ttk.Entry(parent, textvariable=self.application_role_var).grid(row=3, column=1, sticky="ew", pady=6)
+
+        ttk.Label(parent, text="Created").grid(row=4, column=0, sticky="w", pady=6)
+        ttk.Label(parent, textvariable=self.application_created_var).grid(row=4, column=1, sticky="w", pady=6)
+
+        ttk.Label(parent, text="Last modified").grid(row=5, column=0, sticky="w", pady=6)
+        ttk.Label(parent, textvariable=self.application_modified_var).grid(row=5, column=1, sticky="w", pady=6)
+
+        ttk.Label(parent, text="Workspace file").grid(row=6, column=0, sticky="w", pady=6)
+        ttk.Label(parent, textvariable=self.application_path_var, wraplength=820).grid(row=6, column=1, sticky="w", pady=6)
+
+        button_frame = ttk.Frame(parent)
+        button_frame.grid(row=7, column=0, columnspan=2, sticky="nw", pady=(14, 8))
+        ttk.Button(button_frame, text="New Application", command=self._new_application_workspace).pack(side="left")
+        ttk.Button(button_frame, text="Save Application", command=lambda: self._save_application_workspace(save_as=False)).pack(side="left", padx=8)
+        ttk.Button(button_frame, text="Save Application As", command=lambda: self._save_application_workspace(save_as=True)).pack(side="left")
+        ttk.Button(button_frame, text="Load Application", command=self._load_application_workspace).pack(side="left", padx=8)
+
+        help_text = tk.Text(parent, height=9, wrap="word")
+        help_text.grid(row=8, column=0, columnspan=2, sticky="nsew", pady=(16, 0))
+        help_text.insert(
+            "1.0",
+            "Workflow:\n"
+            "1. Create a new application workspace for each job.\n"
+            "2. Paste the job description and generate the resume or CV.\n"
+            "3. Run quality checks and AI review.\n"
+            "4. Save the application before closing the app.\n\n"
+            "This is not just convenience. Without saved application workspaces, you cannot manage multiple applications professionally.",
+        )
+        help_text.configure(state="disabled")
 
     def _build_personal_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(1, weight=1)
@@ -342,6 +408,185 @@ class ResumeAIApp(tk.Tk):
         ttk.Combobox(buttons, textvariable=self.pdf_page_size_var, values=["A4", "Letter"], width=8, state="readonly").pack(side="left")
         ttk.Button(buttons, text="Clear Output", command=lambda: self._clear_text(self.output_text)).pack(side="left", padx=8)
 
+
+    def _collect_application_workspace_snapshot(self) -> dict:
+        now = datetime.now().isoformat(timespec="seconds")
+        created = self.application_created_var.get().strip() or now
+        profile = self._collect_profile()
+        ai_settings = self._collect_ai_settings()
+        return {
+            "schema_version": 1,
+            "saved_at": now,
+            "metadata": {
+                "application_name": self.application_name_var.get().strip(),
+                "target_company": self.application_company_var.get().strip(),
+                "target_role": self.application_role_var.get().strip(),
+                "created_at": created,
+                "modified_at": now,
+            },
+            "profile": profile.to_dict(),
+            "job_description": self.job_description_text.get("1.0", tk.END).strip(),
+            "general_cv": self.general_cv_text.get("1.0", tk.END).strip(),
+            "general_resume": self.general_resume_text.get("1.0", tk.END).strip(),
+            "settings": {
+                "template_name": self.template_var.get(),
+                "pdf_template": self.pdf_template_var.get(),
+                "pdf_page_size": self.pdf_page_size_var.get(),
+                "ai": {
+                    "use_ai": bool(self.ai_enabled_var.get()),
+                    "provider": ai_settings.provider,
+                    "model": ai_settings.model,
+                    "generation_mode": ai_settings.generation_mode,
+                    "ollama_base_url": ai_settings.ollama_base_url,
+                    "ollama_model": ai_settings.ollama_model,
+                    "timeout_seconds": ai_settings.timeout_seconds,
+                },
+            },
+            "documents": {
+                "last_document_type": self.last_document_type,
+                "output_markdown": self.output_text.get("1.0", tk.END).strip(),
+                "quality_report_markdown": self.last_quality_report_markdown,
+                "quality_heuristic_markdown": self.last_quality_heuristic_markdown,
+                "ai_review_markdown": self.last_ai_review_markdown,
+            },
+        }
+
+    def _apply_application_workspace_snapshot(self, data: dict, source_path: Path | None = None) -> None:
+        metadata = data.get("metadata", {}) if isinstance(data.get("metadata", {}), dict) else {}
+        profile_data = data.get("profile", {}) if isinstance(data.get("profile", {}), dict) else {}
+        settings = data.get("settings", {}) if isinstance(data.get("settings", {}), dict) else {}
+        ai_settings = settings.get("ai", {}) if isinstance(settings.get("ai", {}), dict) else {}
+        documents = data.get("documents", {}) if isinstance(data.get("documents", {}), dict) else {}
+
+        self.application_name_var.set(metadata.get("application_name", ""))
+        self.application_company_var.set(metadata.get("target_company", ""))
+        self.application_role_var.set(metadata.get("target_role", ""))
+        self.application_created_var.set(metadata.get("created_at", ""))
+        self.application_modified_var.set(metadata.get("modified_at", data.get("saved_at", "")))
+
+        for key, var in self.single_line_fields.items():
+            var.set(profile_data.get(key, ""))
+        for key, widget in self.multi_line_fields.items():
+            widget.delete("1.0", tk.END)
+            widget.insert("1.0", profile_data.get(key, ""))
+
+        self.job_description_text.delete("1.0", tk.END)
+        self.job_description_text.insert("1.0", data.get("job_description", ""))
+
+        self.general_cv_text.delete("1.0", tk.END)
+        self.general_cv_text.insert("1.0", data.get("general_cv", profile_data.get("general_cv", "")))
+        self.general_resume_text.delete("1.0", tk.END)
+        self.general_resume_text.insert("1.0", data.get("general_resume", profile_data.get("general_resume", "")))
+
+        self.template_var.set(settings.get("template_name", self.template_var.get()))
+        self.pdf_template_var.set(settings.get("pdf_template", self.pdf_template_var.get()))
+        self.pdf_page_size_var.set(settings.get("pdf_page_size", self.pdf_page_size_var.get()))
+        self.ai_enabled_var.set(bool(ai_settings.get("use_ai", self.ai_enabled_var.get())))
+        self.ai_provider_var.set(ai_settings.get("provider", self.ai_provider_var.get()))
+        self.ai_model_var.set(ai_settings.get("model", self.ai_model_var.get()))
+        self.ai_mode_var.set(ai_settings.get("generation_mode", self.ai_mode_var.get()))
+        self.ollama_base_url_var.set(ai_settings.get("ollama_base_url", self.ollama_base_url_var.get()))
+        self.ollama_model_var.set(ai_settings.get("ollama_model", self.ollama_model_var.get()))
+        self.ai_timeout_var.set(str(ai_settings.get("timeout_seconds", self.ai_timeout_var.get())))
+        self.ai_api_key_var.set("")
+        self._refresh_ai_provider_help()
+        self._update_template_description()
+
+        self.last_document_type = documents.get("last_document_type", "document")
+        self.last_candidate_name = self.single_line_fields.get("name", tk.StringVar(value="candidate")).get() or "candidate"
+        self.last_generation_request = None
+        self.last_quality_report_markdown = documents.get("quality_report_markdown", "")
+        self.last_quality_heuristic_markdown = documents.get("quality_heuristic_markdown", "")
+        self.last_ai_review_markdown = documents.get("ai_review_markdown", "")
+
+        self.output_text.delete("1.0", tk.END)
+        self.output_text.insert("1.0", documents.get("output_markdown", ""))
+        self.quality_text.delete("1.0", tk.END)
+        self.quality_text.insert("1.0", self.last_quality_report_markdown)
+
+        self.current_application_path = source_path
+        self.application_path_var.set(str(source_path) if source_path else "Unsaved application workspace")
+        self.status_var.set("Application workspace loaded" if source_path else "New application workspace ready")
+
+    def _new_application_workspace(self) -> None:
+        proceed = messagebox.askyesno(
+            "New application",
+            "Start a new application workspace? Candidate profile fields will stay, but job description, output, and quality reports will be cleared.",
+        )
+        if not proceed:
+            return
+
+        now = datetime.now().isoformat(timespec="seconds")
+        self.application_name_var.set("")
+        self.application_company_var.set("")
+        self.application_role_var.set("")
+        self.application_created_var.set(now)
+        self.application_modified_var.set("")
+        self.current_application_path = None
+        self.application_path_var.set("Unsaved application workspace")
+
+        self.job_description_text.delete("1.0", tk.END)
+        self.general_cv_text.delete("1.0", tk.END)
+        self.general_resume_text.delete("1.0", tk.END)
+        self.output_text.delete("1.0", tk.END)
+        self._clear_quality_report()
+        self.last_generation_request = None
+        self.last_document_type = "document"
+        self.status_var.set("New application workspace ready")
+
+    def _save_application_workspace(self, save_as: bool = False) -> None:
+        ensure_applications_dir()
+        snapshot = self._collect_application_workspace_snapshot()
+        metadata = snapshot.get("metadata", {})
+        suggested_name = suggested_application_filename(
+            metadata.get("target_company", ""),
+            metadata.get("target_role", ""),
+        )
+
+        target_path = self.current_application_path
+        if save_as or target_path is None:
+            selected = filedialog.asksaveasfilename(
+                initialdir=APPLICATIONS_DIR,
+                initialfile=suggested_name,
+                defaultextension=".json",
+                filetypes=[("Application workspace", "*.json"), ("All files", "*.*")],
+            )
+            if not selected:
+                return
+            target_path = Path(selected)
+
+        try:
+            saved_path = save_application_snapshot(target_path, snapshot)
+        except Exception as exc:
+            messagebox.showerror("Save failed", f"Could not save application workspace:\n{exc}")
+            self.status_var.set("Application workspace save failed")
+            return
+
+        self.current_application_path = saved_path
+        self.application_modified_var.set(snapshot.get("saved_at", ""))
+        if not self.application_created_var.get().strip():
+            self.application_created_var.set(snapshot.get("metadata", {}).get("created_at", ""))
+        self.application_path_var.set(str(saved_path))
+        self.status_var.set(f"Application workspace saved to {saved_path}")
+        messagebox.showinfo("Saved", f"Application workspace saved to:\n{saved_path}")
+
+    def _load_application_workspace(self) -> None:
+        ensure_applications_dir()
+        selected = filedialog.askopenfilename(
+            initialdir=APPLICATIONS_DIR,
+            filetypes=[("Application workspace", "*.json"), ("All files", "*.*")],
+        )
+        if not selected:
+            return
+
+        source_path = Path(selected)
+        try:
+            data = load_application_snapshot(source_path)
+            self._apply_application_workspace_snapshot(data, source_path=source_path)
+        except Exception as exc:
+            messagebox.showerror("Load failed", f"Could not load application workspace:\n{exc}")
+            self.status_var.set("Application workspace load failed")
+
     def _load_saved_profile(self) -> None:
         data = load_json()
         if not data:
@@ -428,6 +673,7 @@ class ResumeAIApp(tk.Tk):
         self.quality_text.delete("1.0", tk.END)
         self.output_text.delete("1.0", tk.END)
         self.output_text.insert("1.0", result)
+        self.application_modified_var.set(datetime.now().isoformat(timespec="seconds"))
         self.status_var.set(f"Generated {request.document_type.lower()} and saved to {saved_path}")
         self._set_generating_state(False)
 
@@ -718,6 +964,7 @@ class ResumeAIApp(tk.Tk):
         self.output_text.delete("1.0", tk.END)
         self.output_text.insert("1.0", result)
         self._render_quality_panel()
+        self.application_modified_var.set(datetime.now().isoformat(timespec="seconds"))
         self.status_var.set(f"Improved {request.document_type.lower()} saved to {saved_path}. New score: {score}/100")
         self._set_generating_state(False)
 
