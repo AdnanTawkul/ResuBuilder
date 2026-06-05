@@ -10,6 +10,8 @@ venv/
 # App data
 data/
 exports/*.md
+exports/*.pdf
+exports/*.txt
 
 # IDE
 .idea/

@@ -1,35 +1,36 @@
-# Resume AI 2 Roadmap
+# Roadmap
 
-## Version 0.1
-- Desktop GUI with tabs. Done.
-- Candidate profile form. Done.
-- Job description input. Done.
-- Existing CV and resume input. Done.
-- Template selection. Done.
-- Generate tailored CV and resume as Markdown. Done.
-- Save profile locally. Done.
+## Completed
 
-## Version 0.2
-- Add PDF export. Done in Step 2.
-- Add stronger PDF template layouts. Done in Step 3.
-- Add validation warnings for missing dates, weak bullets, and unverifiable claims.
+- Basic GUI
+- Candidate profile input
+- Job description input
+- Existing CV and resume input
+- Markdown generation
+- PDF export
+- PDF templates
+- OpenAI provider
+- Ollama local AI provider
+- Quality checker
+- AI quality review
+- Regenerate with quality fixes
+- AI review wait screen fix
+- Quality improvement wait screen
+- Quality improvement timeout guard
+- Ollama non-thinking request mode
+- Improved AI output structure
+- Better job keyword extraction
+- Candidate evidence mapping
+- Contact-header repair for generated documents
+- Truth-aware quality scoring
+- Supported vs unsupported job signal reporting
+- Quality-fix prompts that avoid impossible keyword chasing
 
-## Version 0.3
-- Add AI settings tab.
-- Add model selector.
-- Add prompt preview.
-- Add secure API key loading from environment variables.
-- Add temperature and generation mode options.
+## Next
 
-## Version 0.4
-- Add import support for PDF files.
-- Add import support for plain text files. Partly done.
-- Add skill gap analysis against the job description.
-- Add keyword matching score.
-
-## Version 1.0
-- Polished desktop app.
-- Installer build.
-- Automated tests.
-- GitHub Actions workflow.
-- Proper release notes.
+1. Add a pre-generation job fit diagnosis screen.
+2. Add structured evidence fields for each project and job.
+3. Add guided questions for unsupported job signals.
+4. Add resume version history.
+5. Add local project settings file.
+6. Package the app as a Windows executable.
