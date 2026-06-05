@@ -26,6 +26,7 @@
 - Supported vs unsupported job signal reporting
 - Quality-fix prompts that avoid impossible keyword chasing
 - Application workspace save/load
+- PDF/text import for job descriptions, existing CVs, and existing resumes
 
 ## Next
 
@@ -34,5 +35,4 @@
 3. Add resume version history inside each application workspace.
 4. Add export folder generation per application.
 5. Add local project settings file.
-6. Import existing PDF resume/CV.
-7. Package the app as a Windows executable.
+6. Package the app as a Windows executable.

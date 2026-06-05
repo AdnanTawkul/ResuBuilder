@@ -8,6 +8,8 @@ Resume AI 2 is a local desktop application for tailoring resumes and CVs to a sp
 - Candidate profile fields
 - Job description input
 - Existing CV and resume input
+- Existing PDF resume/CV import
+- PDF/text job description import
 - Tailored CV generation
 - Tailored resume generation
 - Template selection
@@ -38,6 +40,26 @@ Resume AI 2 is a local desktop application for tailoring resumes and CVs to a sp
 python app.py
 ```
 
+## PDF/text import workflow
+
+The app can now import text from:
+
+```text
+.txt
+.md
+.pdf
+```
+
+You can use this for:
+
+```text
+- Job descriptions
+- Existing CVs
+- Existing resumes
+```
+
+PDF import is best-effort. It works on normal selectable-text PDFs. It does not perform OCR on scanned image-only PDFs yet.
+
 ## Application workspace workflow
 
 Use the **Workspace** tab for each job application.
@@ -47,7 +69,7 @@ Recommended flow:
 ```text
 1. Click New Application.
 2. Enter application name, target company, and target role.
-3. Fill or load candidate profile and job description.
+3. Fill or import candidate profile, job description, existing CV, or existing resume.
 4. Generate the resume or CV.
 5. Run Quality Check and AI Quality Review.
 6. Improve with Quality Fixes if needed.
@@ -105,15 +127,17 @@ Timeout: 240
 ## Testing checklist
 
 1. Create a new application workspace.
-2. Generate a tailored resume.
-3. Run Quality Check.
-4. Run AI Quality Review.
-5. Click Improve with Quality Fixes.
-6. Save the application workspace.
-7. Close and reopen the app.
-8. Load the saved application workspace.
-9. Confirm the job description, output, and quality report restore correctly.
-10. Export PDF only after manual verification.
+2. Import an existing PDF resume into the Existing CV / Resume tab.
+3. Import or paste a job description.
+4. Generate a tailored resume.
+5. Run Quality Check.
+6. Run AI Quality Review.
+7. Click Improve with Quality Fixes.
+8. Save the application workspace.
+9. Close and reopen the app.
+10. Load the saved application workspace.
+11. Confirm imported text, generated output, and quality report restore correctly.
+12. Export PDF only after manual verification.
 
 ## Git workflow
 
@@ -122,11 +146,11 @@ Use GitHub Desktop. Keep each major feature on its own branch until tested.
 Recommended branch:
 
 ```text
-feature/application-workspace
+feature/pdf-import
 ```
 
 Recommended commit for this update:
 
 ```text
-Add application workspace save and load
+Add PDF import for existing resumes and CVs
 ```
