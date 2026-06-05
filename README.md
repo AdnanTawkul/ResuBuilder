@@ -32,6 +32,9 @@ Resume AI 2 is a local desktop application for tailoring CVs and covering letter
 - Lower-temperature Ollama settings for more consistent local output
 - Truth-aware quality scoring that separates supported job signals from unsupported job-fit gaps
 - Covering-letter-specific generation, review, and quality-check logic
+- One-click application package export
+- Separate stored generated CV and covering letter outputs
+- Package export with final PDFs, Markdown sources, quality report, and summary JSON
 
 ## Run the app
 
@@ -73,13 +76,24 @@ Recommended flow:
 5. Run Quality Check and AI Quality Review.
 6. Improve with Quality Fixes if needed.
 7. Save Application.
-8. Export the final PDF.
+8. Export the full application package.
 ```
 
 Workspace files are saved as JSON under:
 
 ```text
 data/applications/
+```
+
+Use **Export Application Package** in the Output tab after both final documents are generated. It creates a folder under `exports/` or your configured export directory with:
+
+```text
+- Final CV PDF
+- Final covering letter PDF
+- CV Markdown source
+- Covering letter Markdown source
+- Quality report Markdown
+- Application summary JSON
 ```
 
 A workspace stores:
@@ -137,7 +151,8 @@ Timeout: 240
 10. Close and reopen the app.
 11. Load the saved application workspace.
 12. Confirm imported text, generated output, and quality report restore correctly.
-13. Export PDF only after manual verification.
+13. Click Export Application Package only after manual verification.
+14. Confirm the export folder contains the CV PDF, covering letter PDF, quality report, and summary JSON.
 
 ## Git workflow
 
@@ -146,11 +161,11 @@ Use GitHub Desktop. Keep each major feature on its own branch until tested.
 Recommended branch:
 
 ```text
-feature/covering-letter-generation
+feature/application-package-export
 ```
 
 Recommended commit for this update:
 
 ```text
-Replace resume generation with covering letter generation
+Add application package export
 ```
