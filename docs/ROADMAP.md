@@ -31,11 +31,12 @@
 - Added covering-letter-specific AI prompt and quality-check logic
 - Added one-click application package export
 - Added package folders with CV PDF, covering letter PDF, quality report, and summary JSON
+- Added structured evidence builder for stronger AI inputs
 
 ## Next
 
-1. Add structured evidence fields for each project and job.
-2. Add guided questions for unsupported job signals.
-3. Add document version history inside each application workspace.
-4. Add local project settings file.
+1. Add guided questions for unsupported job signals.
+2. Add document version history inside each application workspace.
+3. Add local project settings file.
+4. Add template preview and editing.
 5. Package the app as a Windows executable.

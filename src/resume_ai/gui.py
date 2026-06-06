@@ -95,6 +95,14 @@ class ResumeAIApp(tk.Tk):
         self.ai_timeout_var = tk.StringVar(value=str(default_ai_settings.timeout_seconds))
         self.ai_mode_var = tk.StringVar(value=default_ai_settings.generation_mode)
         self.prompt_preview_type_var = tk.StringVar(value="Covering Letter")
+        self.evidence_type_var = tk.StringVar(value="Project")
+        self.evidence_title_var = tk.StringVar(value="")
+        self.evidence_context_var = tk.StringVar(value="")
+        self.evidence_tools_var = tk.StringVar(value="")
+        self.evidence_methods_var = tk.StringVar(value="")
+        self.evidence_outcome_var = tk.StringVar(value="")
+        self.evidence_metrics_var = tk.StringVar(value="")
+        self.evidence_signals_var = tk.StringVar(value="")
         self.generate_buttons: list[ttk.Button] = []
         self.improvement_buttons: list[ttk.Button] = []
         self.ai_review_buttons: list[ttk.Button] = []
@@ -112,6 +120,7 @@ class ResumeAIApp(tk.Tk):
 
         workspace_tab = ttk.Frame(notebook, padding=12)
         personal_tab = ttk.Frame(notebook, padding=12)
+        evidence_tab = ttk.Frame(notebook, padding=12)
         job_tab = ttk.Frame(notebook, padding=12)
         source_tab = ttk.Frame(notebook, padding=12)
         template_tab = ttk.Frame(notebook, padding=12)
@@ -121,6 +130,7 @@ class ResumeAIApp(tk.Tk):
 
         notebook.add(workspace_tab, text="Workspace")
         notebook.add(personal_tab, text="Personal Info")
+        notebook.add(evidence_tab, text="Evidence Builder")
         notebook.add(job_tab, text="Job Description")
         notebook.add(source_tab, text="Existing CV / Covering Letter")
         notebook.add(template_tab, text="Templates")
@@ -130,6 +140,7 @@ class ResumeAIApp(tk.Tk):
 
         self._build_workspace_tab(workspace_tab)
         self._build_personal_tab(personal_tab)
+        self._build_evidence_tab(evidence_tab)
         self._build_job_tab(job_tab)
         self._build_source_tab(source_tab)
         self._build_template_tab(template_tab)
@@ -237,6 +248,105 @@ class ResumeAIApp(tk.Tk):
             text = tk.Text(parent, height=4, wrap="word")
             text.grid(row=row, column=1, columnspan=3, sticky="nsew", pady=6)
             self.multi_line_fields[key] = text
+
+    def _build_evidence_tab(self, parent: ttk.Frame) -> None:
+        parent.columnconfigure(1, weight=1)
+        parent.columnconfigure(3, weight=1)
+        parent.rowconfigure(9, weight=1)
+
+        ttk.Label(
+            parent,
+            text="Build truthful evidence blocks. This gives the AI stronger raw material than vague project/job text.",
+        ).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 8))
+
+        ttk.Label(parent, text="Evidence type").grid(row=1, column=0, sticky="w", pady=5)
+        ttk.Combobox(
+            parent,
+            textvariable=self.evidence_type_var,
+            values=["Project", "Work experience", "Education", "Research", "Volunteer", "Other"],
+            state="readonly",
+        ).grid(row=1, column=1, sticky="ew", pady=5)
+
+        ttk.Label(parent, text="Title").grid(row=1, column=2, sticky="w", padx=(12, 8), pady=5)
+        ttk.Entry(parent, textvariable=self.evidence_title_var).grid(row=1, column=3, sticky="ew", pady=5)
+
+        ttk.Label(parent, text="Context / situation").grid(row=2, column=0, sticky="w", pady=5)
+        ttk.Entry(parent, textvariable=self.evidence_context_var).grid(row=2, column=1, columnspan=3, sticky="ew", pady=5)
+
+        ttk.Label(parent, text="Tools / technologies").grid(row=3, column=0, sticky="w", pady=5)
+        ttk.Entry(parent, textvariable=self.evidence_tools_var).grid(row=3, column=1, columnspan=3, sticky="ew", pady=5)
+
+        ttk.Label(parent, text="Methods / actions").grid(row=4, column=0, sticky="w", pady=5)
+        ttk.Entry(parent, textvariable=self.evidence_methods_var).grid(row=4, column=1, columnspan=3, sticky="ew", pady=5)
+
+        ttk.Label(parent, text="Outcome / purpose").grid(row=5, column=0, sticky="w", pady=5)
+        ttk.Entry(parent, textvariable=self.evidence_outcome_var).grid(row=5, column=1, columnspan=3, sticky="ew", pady=5)
+
+        ttk.Label(parent, text="Metrics / proof").grid(row=6, column=0, sticky="w", pady=5)
+        ttk.Entry(parent, textvariable=self.evidence_metrics_var).grid(row=6, column=1, columnspan=3, sticky="ew", pady=5)
+
+        ttk.Label(parent, text="Relevant job signals").grid(row=7, column=0, sticky="w", pady=5)
+        ttk.Entry(parent, textvariable=self.evidence_signals_var).grid(row=7, column=1, columnspan=3, sticky="ew", pady=5)
+
+        button_frame = ttk.Frame(parent)
+        button_frame.grid(row=8, column=0, columnspan=4, sticky="w", pady=(8, 8))
+        ttk.Button(button_frame, text="Add Evidence Block", command=self._add_structured_evidence).pack(side="left")
+        ttk.Button(button_frame, text="Clear Builder Fields", command=self._clear_evidence_builder).pack(side="left", padx=8)
+        ttk.Button(button_frame, text="Clear All Evidence", command=lambda: self._clear_text(self.structured_evidence_text)).pack(side="left")
+
+        ttk.Label(parent, text="Structured Evidence").grid(row=9, column=0, sticky="nw", pady=(8, 0))
+        self.structured_evidence_text = tk.Text(parent, height=12, wrap="word")
+        self.structured_evidence_text.grid(row=9, column=1, columnspan=3, sticky="nsew", pady=(8, 0))
+        self.multi_line_fields["structured_evidence"] = self.structured_evidence_text
+
+        help_text = (
+            "Example: Project | Pneumonia Detection | Built a CNN classifier using TensorFlow/Keras | "
+            "trained and evaluated image-classification models | supported diagnostic screening workflow | "
+            "proof: course project, GitHub repository | signals: deep learning, model training, medical imaging."
+        )
+        ttk.Label(parent, text=help_text, wraplength=900).grid(row=10, column=0, columnspan=4, sticky="w", pady=(10, 0))
+
+    def _add_structured_evidence(self) -> None:
+        values = {
+            "type": self.evidence_type_var.get().strip(),
+            "title": self.evidence_title_var.get().strip(),
+            "context": self.evidence_context_var.get().strip(),
+            "tools": self.evidence_tools_var.get().strip(),
+            "methods": self.evidence_methods_var.get().strip(),
+            "outcome": self.evidence_outcome_var.get().strip(),
+            "metrics": self.evidence_metrics_var.get().strip(),
+            "signals": self.evidence_signals_var.get().strip(),
+        }
+        if not values["title"] and not values["context"] and not values["tools"] and not values["methods"]:
+            messagebox.showwarning("Missing evidence", "Add at least a title, context, tool, or method before creating an evidence block.")
+            return
+
+        block_lines = [
+            f"### {values['type']}: {values['title'] or 'Untitled evidence'}",
+            f"- Context: {values['context'] or 'Not specified'}",
+            f"- Tools/technologies: {values['tools'] or 'Not specified'}",
+            f"- Methods/actions: {values['methods'] or 'Not specified'}",
+            f"- Outcome/purpose: {values['outcome'] or 'Not specified'}",
+            f"- Metrics/proof: {values['metrics'] or 'Not specified'}",
+            f"- Relevant job signals: {values['signals'] or 'Not specified'}",
+        ]
+        existing = self.structured_evidence_text.get("1.0", tk.END).strip()
+        insert_text = "\n\n".join([part for part in [existing, "\n".join(block_lines)] if part]).strip()
+        self.structured_evidence_text.delete("1.0", tk.END)
+        self.structured_evidence_text.insert("1.0", insert_text)
+        self.application_modified_var.set(datetime.now().isoformat(timespec="seconds"))
+        self.status_var.set("Structured evidence block added")
+        self._clear_evidence_builder()
+
+    def _clear_evidence_builder(self) -> None:
+        self.evidence_type_var.set("Project")
+        self.evidence_title_var.set("")
+        self.evidence_context_var.set("")
+        self.evidence_tools_var.set("")
+        self.evidence_methods_var.set("")
+        self.evidence_outcome_var.set("")
+        self.evidence_metrics_var.set("")
+        self.evidence_signals_var.set("")
 
     def _build_job_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(0, weight=1)

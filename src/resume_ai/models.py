@@ -15,6 +15,7 @@ class CandidateProfile:
     projects: str = ""
     skills: str = ""
     languages: str = ""
+    structured_evidence: str = ""
     links: str = ""
     general_cv: str = ""
     general_cover_letter: str = ""

@@ -715,6 +715,7 @@ def _candidate_source_text(profile: CandidateProfile) -> str:
             profile.projects,
             profile.skills,
             profile.languages,
+            getattr(profile, "structured_evidence", ""),
             profile.general_cv,
             profile.general_cover_letter,
             profile.general_resume,
