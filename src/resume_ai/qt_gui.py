@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QScrollArea,
     QSizePolicy,
+    QSpinBox,
     QStackedWidget,
     QTextEdit,
     QVBoxLayout,
@@ -49,7 +50,7 @@ from .workspace_manager import (
     save_application_snapshot,
     suggested_application_filename,
 )
-from .qt_theme import DARK_BLUE_QSS
+from .qt_theme import DARK_BLUE_QSS, theme_qss
 
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -282,7 +283,7 @@ class ResuBuilderQtApp(QMainWindow):
         self.page_buttons: dict[str, QPushButton] = {}
         self.pages: dict[str, QWidget] = {}
 
-        self.setStyleSheet(DARK_BLUE_QSS)
+        self.setStyleSheet(theme_qss(getattr(self.app_settings, "ui_theme", "Dark blue")))
         self._build_menu()
         self._build_shell()
         self.show_page("Welcome")
@@ -1135,26 +1136,166 @@ class ResuBuilderQtApp(QMainWindow):
     def _build_settings_page(self) -> QWidget:
         page, layout = self._page_container(
             "Settings",
-            "Minimal Qt settings view. Full settings persistence remains in the existing GUI until this experiment catches up.",
+            "Control AI provider, generation behavior, document defaults, folders, and UI theme directly in the Qt app.",
         )
-        card = Card("Current AI settings", "Loaded from data/settings.json. API keys are intentionally not displayed or saved here.")
-        settings_text = QPlainTextEdit()
-        settings_text.setReadOnly(True)
-        settings_text.setPlainText(
-            f"Provider: {self.app_settings.ai_provider}\n"
-            f"Ollama URL: {self.app_settings.ollama_base_url}\n"
-            f"Ollama model: {self.app_settings.ollama_model}\n"
-            f"OpenAI model: {self.app_settings.openai_model}\n"
-            f"Generation mode: {self.app_settings.generation_mode}\n"
-            f"Timeout: {self.app_settings.timeout_seconds}\n"
-            f"Theme: {self.app_settings.ui_theme}\n"
-        )
-        card.layout.addWidget(settings_text)
-        save_button = QPushButton("Save Current Settings")
+
+        scroll = QScrollArea()
+        scroll.setObjectName("PageScrollArea")
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        content = QWidget()
+        content.setObjectName("ScrollContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 14, 0)
+        content_layout.setSpacing(20)
+
+        ai_card = Card("AI settings", "Choose the provider and model used by generation, job fit analysis, AI review, and quality-fix improvement.")
+        ai_grid = QGridLayout()
+        ai_grid.setHorizontalSpacing(18)
+        ai_grid.setVerticalSpacing(14)
+        ai_grid.setColumnStretch(0, 1)
+        ai_grid.setColumnStretch(1, 1)
+
+        self.settings_provider_combo = QComboBox()
+        self.settings_provider_combo.addItems(["Ollama Local", "OpenAI"])
+        self.settings_provider_combo.setCurrentText(getattr(self.app_settings, "ai_provider", "Ollama Local"))
+
+        self.settings_generation_mode_combo = QComboBox()
+        self.settings_generation_mode_combo.addItems(["Conservative", "Balanced", "Aggressive"])
+        self.settings_generation_mode_combo.setCurrentText(getattr(self.app_settings, "generation_mode", "Balanced"))
+
+        self.settings_ollama_url_edit = QLineEdit(getattr(self.app_settings, "ollama_base_url", "http://localhost:11434"))
+        self.settings_ollama_model_edit = QLineEdit(getattr(self.app_settings, "ollama_model", "qwen3:14b"))
+        self.settings_openai_model_edit = QLineEdit(getattr(self.app_settings, "openai_model", "gpt-4.1-mini"))
+
+        self.settings_timeout_spin = QSpinBox()
+        self.settings_timeout_spin.setRange(30, 600)
+        self.settings_timeout_spin.setSingleStep(10)
+        self.settings_timeout_spin.setSuffix(" seconds")
+        self.settings_timeout_spin.setValue(int(getattr(self.app_settings, "timeout_seconds", 120) or 120))
+
+        for widget in (
+            self.settings_provider_combo,
+            self.settings_generation_mode_combo,
+            self.settings_ollama_url_edit,
+            self.settings_ollama_model_edit,
+            self.settings_openai_model_edit,
+            self.settings_timeout_spin,
+        ):
+            self._prepare_form_control(widget, min_width=360)
+
+        self._add_labeled_field(ai_grid, 0, 0, "AI provider", self.settings_provider_combo)
+        self._add_labeled_field(ai_grid, 0, 1, "Generation mode", self.settings_generation_mode_combo)
+        self._add_labeled_field(ai_grid, 1, 0, "Ollama base URL", self.settings_ollama_url_edit)
+        self._add_labeled_field(ai_grid, 1, 1, "Ollama model", self.settings_ollama_model_edit)
+        self._add_labeled_field(ai_grid, 2, 0, "OpenAI model", self.settings_openai_model_edit)
+        self._add_labeled_field(ai_grid, 2, 1, "AI timeout", self.settings_timeout_spin)
+        ai_card.layout.addLayout(ai_grid)
+        content_layout.addWidget(ai_card)
+
+        document_card = Card("Document defaults", "Set the default generation template and export format used by the Generate and Export pages.")
+        document_grid = QGridLayout()
+        document_grid.setHorizontalSpacing(18)
+        document_grid.setVerticalSpacing(14)
+        document_grid.setColumnStretch(0, 1)
+        document_grid.setColumnStretch(1, 1)
+
+        self.settings_template_combo = QComboBox()
+        self.settings_template_combo.addItems(get_template_names())
+        self.settings_template_combo.setCurrentText(getattr(self.app_settings, "template_name", "ATS Friendly"))
+
+        self.settings_pdf_template_combo = QComboBox()
+        self.settings_pdf_template_combo.addItems(get_pdf_template_names())
+        self.settings_pdf_template_combo.setCurrentText(getattr(self.app_settings, "pdf_template", "ATS Friendly"))
+
+        self.settings_page_size_combo = QComboBox()
+        self.settings_page_size_combo.addItems(["A4", "Letter"])
+        self.settings_page_size_combo.setCurrentText(getattr(self.app_settings, "pdf_page_size", "A4"))
+
+        for widget in (self.settings_template_combo, self.settings_pdf_template_combo, self.settings_page_size_combo):
+            self._prepare_form_control(widget, min_width=360)
+
+        self._add_labeled_field(document_grid, 0, 0, "Generation template", self.settings_template_combo)
+        self._add_labeled_field(document_grid, 0, 1, "PDF template", self.settings_pdf_template_combo)
+        self._add_labeled_field(document_grid, 1, 0, "PDF page size", self.settings_page_size_combo)
+        document_card.layout.addLayout(document_grid)
+        content_layout.addWidget(document_card)
+
+        folders_card = Card("Default folders", "Remember where workspaces and exported application packages should be saved.")
+        folders_grid = QGridLayout()
+        folders_grid.setHorizontalSpacing(18)
+        folders_grid.setVerticalSpacing(14)
+        folders_grid.setColumnStretch(0, 1)
+
+        self.settings_workspace_dir_edit = QLineEdit(getattr(self.app_settings, "last_workspace_dir", "") or str(Path("data/applications")))
+        self.settings_export_dir_edit = QLineEdit(getattr(self.app_settings, "last_export_dir", "") or str(Path("exports")))
+        self._prepare_form_control(self.settings_workspace_dir_edit, min_width=520)
+        self._prepare_form_control(self.settings_export_dir_edit, min_width=520)
+
+        workspace_browse = QPushButton("Browse")
+        workspace_browse.setMinimumHeight(46)
+        workspace_browse.clicked.connect(self._browse_settings_workspace_dir)
+        export_browse = QPushButton("Browse")
+        export_browse.setMinimumHeight(46)
+        export_browse.clicked.connect(self._browse_settings_export_dir)
+
+        workspace_row = QWidget()
+        workspace_row_layout = QHBoxLayout(workspace_row)
+        workspace_row_layout.setContentsMargins(0, 0, 0, 0)
+        workspace_row_layout.setSpacing(10)
+        workspace_row_layout.addWidget(self.settings_workspace_dir_edit, 1)
+        workspace_row_layout.addWidget(workspace_browse)
+
+        export_row = QWidget()
+        export_row_layout = QHBoxLayout(export_row)
+        export_row_layout.setContentsMargins(0, 0, 0, 0)
+        export_row_layout.setSpacing(10)
+        export_row_layout.addWidget(self.settings_export_dir_edit, 1)
+        export_row_layout.addWidget(export_browse)
+
+        self._add_labeled_field(folders_grid, 0, 0, "Workspace folder", workspace_row)
+        self._add_labeled_field(folders_grid, 1, 0, "Export folder", export_row)
+        folders_card.layout.addLayout(folders_grid)
+        content_layout.addWidget(folders_card)
+
+        appearance_card = Card("Appearance", "Switch the Qt interface theme. This only affects the experimental Qt app.")
+        appearance_row = QHBoxLayout()
+        appearance_row.setSpacing(12)
+        self.settings_theme_combo = QComboBox()
+        self.settings_theme_combo.addItems(["Light", "Dark", "Dark blue"])
+        self.settings_theme_combo.setCurrentText(self._normalized_theme(getattr(self.app_settings, "ui_theme", "Dark blue")))
+        self._prepare_form_control(self.settings_theme_combo, min_width=260)
+        preview_button = QPushButton("Preview Theme")
+        preview_button.clicked.connect(self._preview_selected_theme)
+        appearance_row.addWidget(self.settings_theme_combo)
+        appearance_row.addWidget(preview_button)
+        appearance_row.addStretch(1)
+        appearance_card.layout.addLayout(appearance_row)
+        content_layout.addWidget(appearance_card)
+
+        action_card = Card("Actions", "Save settings after changing them. OpenAI API keys are still not saved here.")
+        action_row = QHBoxLayout()
+        action_row.setSpacing(12)
+        save_button = QPushButton("Save Settings")
+        save_button.setObjectName("PrimaryButton")
         save_button.clicked.connect(self._save_settings)
-        card.layout.addWidget(save_button, alignment=Qt.AlignmentFlag.AlignLeft)
-        layout.addWidget(card)
-        layout.addStretch(1)
+        reset_button = QPushButton("Reset to Defaults")
+        reset_button.clicked.connect(self._reset_settings)
+        action_row.addWidget(save_button)
+        action_row.addWidget(reset_button)
+        action_row.addStretch(1)
+        action_card.layout.addLayout(action_row)
+        self.settings_status_label = QLabel("Settings loaded from data/settings.json. Unsaved changes affect the form only until you save.")
+        self.settings_status_label.setObjectName("CardText")
+        self.settings_status_label.setWordWrap(True)
+        action_card.layout.addWidget(self.settings_status_label)
+        content_layout.addWidget(action_card)
+        content_layout.addStretch(1)
+
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
         return page
 
     def _build_placeholder_page(self, title: str, message: str) -> QWidget:
@@ -1165,7 +1306,7 @@ class ResuBuilderQtApp(QMainWindow):
         return page
 
     def _prepare_form_control(self, widget: QWidget, min_width: int = 260) -> None:
-        if isinstance(widget, (QLineEdit, QComboBox)):
+        if isinstance(widget, (QLineEdit, QComboBox, QSpinBox)):
             widget.setMinimumHeight(46)
             widget.setMinimumWidth(min_width)
             widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -2381,12 +2522,113 @@ class ResuBuilderQtApp(QMainWindow):
         path.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.resolve())))
 
+    def _normalized_theme(self, theme_name: str) -> str:
+        theme = (theme_name or "Dark blue").strip()
+        if theme == "Soft Blue":
+            return "Dark blue"
+        if theme not in {"Light", "Dark", "Dark blue"}:
+            return "Dark blue"
+        return theme
+
+    def _preview_selected_theme(self) -> None:
+        theme = self.settings_theme_combo.currentText() if hasattr(self, "settings_theme_combo") else "Dark blue"
+        self.setStyleSheet(theme_qss(theme))
+        if hasattr(self, "settings_status_label"):
+            self.settings_status_label.setText("Theme preview applied. Click Save Settings to remember it after restart.")
+
+    def _browse_settings_workspace_dir(self) -> None:
+        current = self.settings_workspace_dir_edit.text().strip() if hasattr(self, "settings_workspace_dir_edit") else str(Path("data/applications"))
+        selected = QFileDialog.getExistingDirectory(self, "Select workspace folder", current or str(Path("data/applications")))
+        if selected and hasattr(self, "settings_workspace_dir_edit"):
+            self.settings_workspace_dir_edit.setText(selected)
+
+    def _browse_settings_export_dir(self) -> None:
+        current = self.settings_export_dir_edit.text().strip() if hasattr(self, "settings_export_dir_edit") else str(Path("exports"))
+        selected = QFileDialog.getExistingDirectory(self, "Select export folder", current or str(Path("exports")))
+        if selected and hasattr(self, "settings_export_dir_edit"):
+            self.settings_export_dir_edit.setText(selected)
+
+    def _sync_settings_from_controls(self) -> None:
+        if hasattr(self, "settings_provider_combo"):
+            self.app_settings.ai_provider = self.settings_provider_combo.currentText()
+        if hasattr(self, "settings_generation_mode_combo"):
+            self.app_settings.generation_mode = self.settings_generation_mode_combo.currentText()
+        if hasattr(self, "settings_ollama_url_edit"):
+            self.app_settings.ollama_base_url = self.settings_ollama_url_edit.text().strip() or "http://localhost:11434"
+        if hasattr(self, "settings_ollama_model_edit"):
+            self.app_settings.ollama_model = self.settings_ollama_model_edit.text().strip() or "qwen3:14b"
+        if hasattr(self, "settings_openai_model_edit"):
+            self.app_settings.openai_model = self.settings_openai_model_edit.text().strip() or "gpt-4.1-mini"
+        if hasattr(self, "settings_timeout_spin"):
+            self.app_settings.timeout_seconds = int(self.settings_timeout_spin.value())
+        if hasattr(self, "settings_template_combo"):
+            self.app_settings.template_name = self.settings_template_combo.currentText()
+        if hasattr(self, "settings_pdf_template_combo"):
+            self.app_settings.pdf_template = self.settings_pdf_template_combo.currentText()
+        if hasattr(self, "settings_page_size_combo"):
+            self.app_settings.pdf_page_size = self.settings_page_size_combo.currentText()
+        if hasattr(self, "settings_workspace_dir_edit"):
+            self.app_settings.last_workspace_dir = self.settings_workspace_dir_edit.text().strip()
+        if hasattr(self, "settings_export_dir_edit"):
+            self.app_settings.last_export_dir = self.settings_export_dir_edit.text().strip()
+        if hasattr(self, "settings_theme_combo"):
+            self.app_settings.ui_theme = self._normalized_theme(self.settings_theme_combo.currentText())
+
+    def _apply_settings_to_existing_controls(self) -> None:
+        if hasattr(self, "template_combo"):
+            self.template_combo.setCurrentText(getattr(self.app_settings, "template_name", "ATS Friendly"))
+        if hasattr(self, "export_pdf_template_combo"):
+            self.export_pdf_template_combo.setCurrentText(getattr(self.app_settings, "pdf_template", "ATS Friendly"))
+        if hasattr(self, "export_page_size_combo"):
+            self.export_page_size_combo.setCurrentText(getattr(self.app_settings, "pdf_page_size", "A4"))
+        if hasattr(self, "export_dir_edit") and getattr(self.app_settings, "last_export_dir", ""):
+            self.export_dir_edit.setText(getattr(self.app_settings, "last_export_dir", ""))
+        self.setStyleSheet(theme_qss(getattr(self.app_settings, "ui_theme", "Dark blue")))
+
+    def _reset_settings(self) -> None:
+        response = QMessageBox.question(
+            self,
+            "Reset settings",
+            "Reset app settings to defaults? This will not delete profiles, workspaces, generated documents, or exported packages.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if response != QMessageBox.StandardButton.Yes:
+            return
+        self.app_settings = AppSettings()
+        if hasattr(self, "settings_provider_combo"):
+            self.settings_provider_combo.setCurrentText(getattr(self.app_settings, "ai_provider", "Ollama Local"))
+            self.settings_generation_mode_combo.setCurrentText(getattr(self.app_settings, "generation_mode", "Balanced"))
+            self.settings_ollama_url_edit.setText(getattr(self.app_settings, "ollama_base_url", "http://localhost:11434"))
+            self.settings_ollama_model_edit.setText(getattr(self.app_settings, "ollama_model", "qwen3:14b"))
+            self.settings_openai_model_edit.setText(getattr(self.app_settings, "openai_model", "gpt-4.1-mini"))
+            self.settings_timeout_spin.setValue(int(getattr(self.app_settings, "timeout_seconds", 120)))
+            self.settings_template_combo.setCurrentText(getattr(self.app_settings, "template_name", "ATS Friendly"))
+            self.settings_pdf_template_combo.setCurrentText(getattr(self.app_settings, "pdf_template", "ATS Friendly"))
+            self.settings_page_size_combo.setCurrentText(getattr(self.app_settings, "pdf_page_size", "A4"))
+            self.settings_workspace_dir_edit.setText(getattr(self.app_settings, "last_workspace_dir", "") or str(Path("data/applications")))
+            self.settings_export_dir_edit.setText(getattr(self.app_settings, "last_export_dir", "") or str(Path("exports")))
+            self.settings_theme_combo.setCurrentText(self._normalized_theme(getattr(self.app_settings, "ui_theme", "Dark blue")))
+        self._apply_settings_to_existing_controls()
+        try:
+            save_app_settings(self.app_settings)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Settings", f"Could not reset settings: {exc}")
+            return
+        if hasattr(self, "settings_status_label"):
+            self.settings_status_label.setText("Settings reset to defaults and saved.")
+        QMessageBox.information(self, "Settings", "Settings reset to defaults.")
+
     def _save_settings(self) -> None:
+        self._sync_settings_from_controls()
+        self._apply_settings_to_existing_controls()
         try:
             save_app_settings(self.app_settings)
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Settings", f"Could not save settings: {exc}")
             return
+        if hasattr(self, "settings_status_label"):
+            self.settings_status_label.setText("Settings saved. Generation, review, export, and theme defaults now use these values.")
         QMessageBox.information(self, "Settings", "Settings saved.")
 
     def _show_about(self) -> None:

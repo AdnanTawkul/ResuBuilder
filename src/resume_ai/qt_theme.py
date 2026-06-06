@@ -63,7 +63,7 @@ QWidget {
     font-size: 36px;
     font-weight: 900;
 }
-QLineEdit, QTextEdit, QPlainTextEdit, QComboBox {
+QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox {
     background: #0b1424;
     color: #eef5ff;
     border: 1px solid rgba(148, 163, 184, 0.24);
@@ -71,7 +71,7 @@ QLineEdit, QTextEdit, QPlainTextEdit, QComboBox {
     padding: 9px 11px;
     selection-background-color: #7c3aed;
 }
-QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus {
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QSpinBox:focus {
     border: 1px solid #38bdf8;
 }
 QComboBox::drop-down {
@@ -236,3 +236,59 @@ QMenu::item:selected {
     background: #1d4ed8;
 }
 """
+
+
+DARK_QSS = DARK_BLUE_QSS.replace("#07111f", "#0b0f17").replace("#0b1728", "#111827").replace("#101d31", "#171923").replace("#0b1424", "#111827").replace("#081322", "#0f172a")
+
+LIGHT_QSS = """
+QMainWindow { background: #f4f7fb; }
+QWidget { color: #172033; font-family: "Segoe UI", "Inter", "Arial"; font-size: 13px; }
+#AppShell, #Page, #ScrollContent, QStackedWidget { background-color: #f4f7fb; }
+#Sidebar { background: #ffffff; border-right: 1px solid rgba(15, 23, 42, 0.10); }
+#BrandTitle { color: #0f172a; font-size: 24px; font-weight: 800; letter-spacing: 0.4px; }
+#BrandSubtitle, #PageSubtitle, #CardText { color: #64748b; }
+#PageTitle { color: #0f172a; font-size: 26px; font-weight: 800; }
+#HeroCard, #Card, #OutputCard, #MetricCard { background-color: #ffffff; border: 1px solid rgba(15, 23, 42, 0.10); border-radius: 22px; }
+#HeroCard { background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #ffffff, stop:1 #e8f1ff); }
+#CardTitle { color: #0f172a; font-size: 16px; font-weight: 800; }
+#MetricNumber { color: #0f172a; font-size: 36px; font-weight: 900; }
+QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox { background: #ffffff; color: #172033; border: 1px solid rgba(15, 23, 42, 0.18); border-radius: 12px; padding: 9px 11px; selection-background-color: #2563eb; }
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QSpinBox:focus { border: 1px solid #2563eb; }
+QComboBox::drop-down { border: none; padding-right: 8px; }
+QComboBox QAbstractItemView { background: #ffffff; color: #172033; selection-background-color: #dbeafe; border: 1px solid rgba(15, 23, 42, 0.18); }
+QListWidget { background: #ffffff; color: #172033; border: 1px solid rgba(15, 23, 42, 0.16); border-radius: 14px; padding: 8px; }
+QListWidget::item { padding: 10px 12px; border-radius: 10px; margin: 3px; }
+QListWidget::item:selected { background: #dbeafe; color: #0f172a; }
+QPushButton { background: #eef2f7; color: #172033; border: 1px solid rgba(15, 23, 42, 0.12); border-radius: 12px; padding: 10px 14px; font-weight: 700; }
+QPushButton:hover { background: #e2e8f0; }
+QPushButton:disabled { color: #94a3b8; background: #f1f5f9; border: 1px solid rgba(148, 163, 184, 0.22); }
+QPushButton#PrimaryButton { background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2563eb, stop:1 #7c3aed); color: white; border: none; border-radius: 14px; padding: 12px 18px; font-weight: 800; }
+QPushButton#PrimaryButton:hover { background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1d4ed8, stop:1 #6d28d9); }
+QPushButton#NavButton { background: transparent; color: #64748b; border: none; border-radius: 14px; padding: 12px 14px; text-align: left; font-weight: 700; }
+QPushButton#NavButton:hover { background: #f1f5f9; color: #0f172a; }
+QPushButton#NavButtonActive { background: #e0ecff; color: #1d4ed8; border: 1px solid rgba(37, 99, 235, 0.22); border-radius: 14px; padding: 12px 14px; text-align: left; font-weight: 800; }
+QLabel#WarningText { color: #b45309; }
+QLabel#SuccessText { color: #047857; }
+QScrollArea, QScrollArea#PageScrollArea, QScrollArea > QWidget, QScrollArea > QWidget > QWidget { border: none; background-color: #f4f7fb; }
+QScrollBar:vertical { background-color: #e2e8f0; width: 20px; margin: 0px; border-left: 1px solid rgba(15, 23, 42, 0.08); }
+QScrollBar::handle:vertical { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2563eb, stop:1 #7c3aed); min-height: 56px; border-radius: 8px; margin: 4px; }
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical, QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { background: transparent; height: 0px; }
+QScrollBar:horizontal { background-color: #e2e8f0; height: 20px; margin: 0px; border-top: 1px solid rgba(15, 23, 42, 0.08); }
+QScrollBar::handle:horizontal { background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2563eb, stop:1 #7c3aed); min-width: 56px; border-radius: 8px; margin: 4px; }
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal, QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { background: transparent; width: 0px; }
+QMenuBar { background: #ffffff; color: #0f172a; border-bottom: 1px solid rgba(15, 23, 42, 0.10); }
+QMenuBar::item:selected { background: #f1f5f9; }
+QMenu { background: #ffffff; color: #0f172a; border: 1px solid rgba(15, 23, 42, 0.18); }
+QMenu::item:selected { background: #dbeafe; }
+"""
+
+
+def theme_qss(theme_name: str) -> str:
+    theme = (theme_name or "Dark blue").strip()
+    if theme == "Soft Blue":
+        theme = "Dark blue"
+    if theme == "Light":
+        return LIGHT_QSS
+    if theme == "Dark":
+        return DARK_QSS
+    return DARK_BLUE_QSS

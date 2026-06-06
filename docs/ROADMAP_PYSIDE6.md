@@ -18,12 +18,13 @@
 - Add Qt Job Fit Analyzer inside the Generate page.
 - Add dedicated Qt Job page and remove redundant Export company/role fields.
 - Add Qt AI Quality Review and Improve with Quality Fixes.
+- Add editable Qt Settings page.
 
 ## Next
 
-1. Add settings editing inside the Qt Settings page.
-2. Complete feature parity test against the old GUI.
-3. Decide whether Qt replaces the old GUI.
+1. Complete feature parity test against the old GUI.
+2. Decide whether Qt replaces the old GUI.
+3. Prepare Qt replacement plan or keep both app launchers temporarily.
 
 ## Step 24J, Qt Evidence Builder
 
@@ -66,3 +67,12 @@ The Qt experiment now uses custom silent confirmation and information dialogs in
 - Review and improvement use the existing AI service backend.
 - Long-running AI review/improvement tasks run in background threads.
 - Workspace save/load now preserves AI quality review text.
+
+## Step 24P - Qt Settings page completion
+
+- Added editable settings inside the Qt Settings page.
+- Added AI provider/model/timeout controls.
+- Added document template, PDF template, and page-size defaults.
+- Added workspace/export folder defaults.
+- Added Light, Dark, and Dark blue Qt theme switching.
+- Settings persist through `data/settings.json`.

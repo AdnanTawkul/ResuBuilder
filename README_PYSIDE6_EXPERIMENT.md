@@ -33,12 +33,12 @@ Working in the Qt prototype:
 - Complete application package export
 - Export page uses a scrollable layout so controls do not get clipped on smaller windows
 - Wider scrollbars for easier mouse interaction
-- Settings read from `data/settings.json`
+- Settings read from and written to `data/settings.json`
+- Editable Qt Settings page for AI provider, models, timeout, templates, page size, folders, and theme
 
 Still placeholder or partial:
 
-- AI Quality Review
-- Improve with Quality Fixes
+- Full feature parity review against the old GUI
 
 ## Run
 
@@ -170,3 +170,12 @@ The Qt experiment now uses custom silent confirmation and information dialogs in
 - Saves and restores AI quality review text in workspace JSON.
 - Includes AI review text in exported quality reports when available.
 - Keeps the old GUI untouched.
+
+## Step 24P - Qt Settings page completion
+
+- Replaced the read-only Settings placeholder with editable Qt settings.
+- Added controls for AI provider, Ollama URL, Ollama model, OpenAI model, generation mode, and timeout.
+- Added document default controls for generation template, PDF template, and page size.
+- Added default workspace and export folder fields with Browse buttons.
+- Added Light, Dark, and Dark blue theme selection with live preview.
+- Settings are saved to `data/settings.json` and applied to Generate, Review, Export, and the Qt theme.
