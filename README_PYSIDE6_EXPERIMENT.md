@@ -233,3 +233,23 @@ Test checklist:
 - Top dropdown menus now auto-size to the longest visible action.
 - Menu item padding was increased so labels such as Restore App Settings do not get clipped.
 - The menu polish applies across Light, Dark, and Dark blue themes.
+
+## Step 24Z. Modern 3D theme experiment
+
+- Added two neumorphic-style theme options inspired by the supplied reference image:
+  - Modern 3D Light
+  - Modern 3D Dark
+- Kept the existing Light, Dark, and Dark blue themes.
+- Updated the top Settings > UI Theme menu and the Settings dialog theme selector.
+- Updated saved-settings validation so the new themes persist correctly in `data/settings.json`.
+
+Test checklist:
+
+1. Open `python app_qt.py`.
+2. Open Settings > UI Theme.
+3. Select Modern 3D Light.
+4. Confirm cards, buttons, inputs, dropdowns, menus, and scrollbars remain readable.
+5. Select Modern 3D Dark.
+6. Confirm the same screens remain readable.
+7. Open Settings... and confirm the theme dropdown includes both Modern 3D themes.
+8. Save settings, close the app, reopen, and confirm the selected theme is restored.

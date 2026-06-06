@@ -43,7 +43,7 @@ class AppSettings:
         theme = str(data.get("ui_theme", defaults.ui_theme) or defaults.ui_theme)
         if theme == "Soft Blue":
             theme = "Dark blue"
-        if theme not in {"Light", "Dark", "Dark blue"}:
+        if theme not in {"Light", "Dark", "Dark blue", "Modern 3D Light", "Modern 3D Dark"}:
             theme = defaults.ui_theme
 
         provider = str(data.get("ai_provider", defaults.ai_provider) or defaults.ai_provider)

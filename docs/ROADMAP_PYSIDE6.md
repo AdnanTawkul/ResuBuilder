@@ -126,3 +126,18 @@ The Qt menu bar now matches the simpler legacy structure with only File, Setting
 - Top dropdown menus now auto-size to the longest visible action.
 - Menu item padding was increased so labels such as Restore App Settings do not get clipped.
 - The menu polish applies across Light, Dark, and Dark blue themes.
+
+## Step 24Z. Modern 3D theme experiment
+
+Status: implemented in the PySide6 experiment branch.
+
+Changes:
+
+- Added Modern 3D Light and Modern 3D Dark theme options.
+- Styled cards, inputs, buttons, menus, scrollbars, and sidebar states with a soft neumorphic/3D direction.
+- Extended theme persistence so both new options survive app restart.
+
+Next check:
+
+- Verify that the 3D themes look good across Welcome, Profile, Evidence, Job, Generate, Review, Export, and Settings.
+- Do not remove the existing Light, Dark, and Dark blue themes until the new visual direction is tested thoroughly.

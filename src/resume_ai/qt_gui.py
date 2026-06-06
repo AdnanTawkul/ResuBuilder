@@ -50,7 +50,7 @@ from .workspace_manager import (
     save_application_snapshot,
     suggested_application_filename,
 )
-from .qt_theme import DARK_BLUE_QSS, theme_qss
+from .qt_theme import DARK_BLUE_QSS, THEME_OPTIONS, theme_qss
 
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -353,7 +353,7 @@ class ResuBuilderQtApp(QMainWindow):
         self.settings_menu = menu_bar.addMenu("Settings")
         self.settings_menu.addAction(self._menu_action("Open Settings...", self._open_settings_window))
         self.theme_menu = self.settings_menu.addMenu("UI Theme")
-        for theme_name in ("Light", "Dark", "Dark blue"):
+        for theme_name in THEME_OPTIONS:
             self.theme_menu.addAction(self._menu_action(theme_name, lambda theme=theme_name: self._set_theme_from_menu(theme)))
         self.settings_menu.addSeparator()
         self.settings_menu.addAction(self._menu_action("Save App Settings", self._save_settings))
@@ -367,7 +367,7 @@ class ResuBuilderQtApp(QMainWindow):
 
         self._set_menu_width(self.file_menu, 330)
         self._set_menu_width(self.settings_menu, 240)
-        self._set_menu_width(self.theme_menu, 180)
+        self._set_menu_width(self.theme_menu, 260)
         self._set_menu_width(self.help_menu, 220)
 
     def _set_theme_from_menu(self, theme_name: str) -> None:
@@ -513,7 +513,7 @@ class ResuBuilderQtApp(QMainWindow):
 
         appearance_card = Card("Appearance", "Select a theme for the Qt interface.")
         theme_combo = QComboBox()
-        theme_combo.addItems(["Light", "Dark", "Dark blue"])
+        theme_combo.addItems(THEME_OPTIONS)
         theme_combo.setCurrentText(self._normalized_theme(getattr(self.app_settings, "ui_theme", "Dark blue")))
         self._prepare_form_control(theme_combo, min_width=260)
         appearance_row = QHBoxLayout()
@@ -1559,7 +1559,7 @@ class ResuBuilderQtApp(QMainWindow):
         appearance_row = QHBoxLayout()
         appearance_row.setSpacing(12)
         self.settings_theme_combo = QComboBox()
-        self.settings_theme_combo.addItems(["Light", "Dark", "Dark blue"])
+        self.settings_theme_combo.addItems(THEME_OPTIONS)
         self.settings_theme_combo.setCurrentText(self._normalized_theme(getattr(self.app_settings, "ui_theme", "Dark blue")))
         self._prepare_form_control(self.settings_theme_combo, min_width=260)
         preview_button = QPushButton("Preview Theme")
@@ -2821,7 +2821,7 @@ class ResuBuilderQtApp(QMainWindow):
         theme = (theme_name or "Dark blue").strip()
         if theme == "Soft Blue":
             return "Dark blue"
-        if theme not in {"Light", "Dark", "Dark blue"}:
+        if theme not in set(THEME_OPTIONS):
             return "Dark blue"
         return theme
 
