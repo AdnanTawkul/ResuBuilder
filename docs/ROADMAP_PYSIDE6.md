@@ -17,13 +17,13 @@
 - Add Qt Evidence Builder.
 - Add Qt Job Fit Analyzer inside the Generate page.
 - Add dedicated Qt Job page and remove redundant Export company/role fields.
+- Add Qt AI Quality Review and Improve with Quality Fixes.
 
 ## Next
 
-1. Add Qt AI Quality Review and Improve with Quality Fixes.
-2. Add settings editing inside the Qt Settings page.
-3. Complete feature parity test against the old GUI.
-4. Decide whether Qt replaces the old GUI.
+1. Add settings editing inside the Qt Settings page.
+2. Complete feature parity test against the old GUI.
+3. Decide whether Qt replaces the old GUI.
 
 ## Step 24J, Qt Evidence Builder
 
@@ -57,3 +57,12 @@ The Qt experiment now uses custom silent confirmation and information dialogs in
 - Added a Job page for company, job title, full job description, key responsibilities, and required experience/skills.
 - Removed redundant company and role inputs from the Export page.
 - Uses structured job details in generation, job fit, quality check, workspace save/load, and application package export.
+
+
+## Step 24O - Qt AI Quality Review and Improve with Quality Fixes
+
+- Added AI Quality Review to the Qt Review page.
+- Added Improve with Quality Fixes for the selected document.
+- Review and improvement use the existing AI service backend.
+- Long-running AI review/improvement tasks run in background threads.
+- Workspace save/load now preserves AI quality review text.

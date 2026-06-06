@@ -203,6 +203,20 @@ class JobFitSignals(QObject):
     failed = Signal(int, str)
 
 
+class AIReviewSignals(QObject):
+    """Signals for the background AI quality review task."""
+
+    finished = Signal(int, str)
+    failed = Signal(int, str)
+
+
+class ImproveSignals(QObject):
+    """Signals for the background quality-fix improvement task."""
+
+    finished = Signal(int, str, str)
+    failed = Signal(int, str)
+
+
 class Card(QFrame):
     def __init__(self, title: str = "", subtitle: str = "", parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -240,6 +254,7 @@ class ResuBuilderQtApp(QMainWindow):
         self.generated_cv = ""
         self.generated_covering_letter = ""
         self.job_fit_analysis = ""
+        self.ai_quality_review = ""
         self.evidence_entries: list[dict[str, str]] = []
         self._legacy_structured_evidence_text = ""
         self.current_workspace_path: Path | None = None
@@ -247,12 +262,22 @@ class ResuBuilderQtApp(QMainWindow):
         self._generation_job_id = 0
         self._job_fit_running = False
         self._job_fit_job_id = 0
+        self._ai_review_running = False
+        self._ai_review_job_id = 0
+        self._improvement_running = False
+        self._improvement_job_id = 0
         self.generation_signals = GenerationSignals()
         self.generation_signals.finished.connect(self._generation_finished)
         self.generation_signals.failed.connect(self._generation_failed)
         self.job_fit_signals = JobFitSignals()
         self.job_fit_signals.finished.connect(self._job_fit_finished)
         self.job_fit_signals.failed.connect(self._job_fit_failed)
+        self.ai_review_signals = AIReviewSignals()
+        self.ai_review_signals.finished.connect(self._ai_review_finished)
+        self.ai_review_signals.failed.connect(self._ai_review_failed)
+        self.improve_signals = ImproveSignals()
+        self.improve_signals.finished.connect(self._improvement_finished)
+        self.improve_signals.failed.connect(self._improvement_failed)
 
         self.page_buttons: dict[str, QPushButton] = {}
         self.pages: dict[str, QWidget] = {}
@@ -864,26 +889,58 @@ class ResuBuilderQtApp(QMainWindow):
     def _build_review_page(self) -> QWidget:
         page, layout = self._page_container(
             "Review",
-            "Run the existing deterministic quality checker against the generated CV or covering letter.",
+            "Run the deterministic quality checker first, then use AI review and improvement only when the basic report exists.",
         )
 
-        controls = Card("Quality check", "This is the fast rule-based review. AI quality review will be wired in a later Qt step.")
+        scroll = QScrollArea()
+        scroll.setObjectName("PageScrollArea")
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        content = QWidget()
+        content.setObjectName("ScrollContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 14, 0)
+        content_layout.setSpacing(20)
+
+        controls = Card(
+            "Quality review workflow",
+            "Use the rule-based checker for reliable basics. Then run AI review for strategic critique, or improve the selected document using the quality report.",
+        )
         row = QHBoxLayout()
+        row.setSpacing(12)
         self.review_document_combo = QComboBox()
         self.review_document_combo.addItems(["CV", "Covering Letter"])
-        run_button = QPushButton("Run Quality Check")
-        run_button.setObjectName("PrimaryButton")
-        run_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        run_button.clicked.connect(self._run_quality_check)
+        self._prepare_form_control(self.review_document_combo, min_width=220)
+
+        self.run_quality_button = QPushButton("Run Quality Check")
+        self.run_quality_button.setObjectName("PrimaryButton")
+        self.run_quality_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.run_quality_button.clicked.connect(self._run_quality_check)
+
+        self.run_ai_review_button = QPushButton("Run AI Quality Review")
+        self.run_ai_review_button.clicked.connect(self._start_ai_quality_review)
+
+        self.improve_quality_button = QPushButton("Improve with Quality Fixes")
+        self.improve_quality_button.setObjectName("PrimaryButton")
+        self.improve_quality_button.clicked.connect(self._start_quality_improvement)
+
         show_button = QPushButton("Show Selected Document")
         show_button.clicked.connect(self._show_selected_review_document)
+
+        for button in (self.run_quality_button, self.run_ai_review_button, self.improve_quality_button, show_button):
+            button.setMinimumHeight(46)
+
         row.addWidget(QLabel("Document"))
         row.addWidget(self.review_document_combo)
-        row.addWidget(run_button)
+        row.addWidget(self.run_quality_button)
+        row.addWidget(self.run_ai_review_button)
+        row.addWidget(self.improve_quality_button)
         row.addWidget(show_button)
         row.addStretch(1)
         controls.layout.addLayout(row)
-        layout.addWidget(controls)
+        content_layout.addWidget(controls)
 
         score_row = QGridLayout()
         score_row.setSpacing(18)
@@ -891,16 +948,17 @@ class ResuBuilderQtApp(QMainWindow):
         self.review_score_label.setObjectName("MetricNumber")
         self.review_status_label = QLabel("Generate a CV or covering letter first, then run the checker.")
         self.review_status_label.setObjectName("CardText")
+        self.review_status_label.setWordWrap(True)
         score_card = Card("Latest score", "")
         score_card.layout.addWidget(self.review_score_label)
         score_card.layout.addWidget(self.review_status_label)
         tip_card = Card(
-            "Rule-based first",
-            "This catches contact, ATS, evidence, and truth-supported keyword issues before you spend time on AI review.",
+            "Correct order",
+            "Quality Check -> AI Quality Review -> Improve with Quality Fixes -> Quality Check again. Do not export before verifying the final text.",
         )
         score_row.addWidget(score_card, 0, 0)
         score_row.addWidget(tip_card, 0, 1)
-        layout.addLayout(score_row)
+        content_layout.addLayout(score_row)
 
         report_card = QFrame()
         report_card.setObjectName("OutputCard")
@@ -910,11 +968,32 @@ class ResuBuilderQtApp(QMainWindow):
         report_title = QLabel("Quality report")
         report_title.setObjectName("CardTitle")
         self.quality_report_edit = QPlainTextEdit()
-        self.quality_report_edit.setMinimumHeight(360)
+        self.quality_report_edit.setMinimumHeight(300)
         self.quality_report_edit.setPlainText("No report yet.")
         report_layout.addWidget(report_title)
         report_layout.addWidget(self.quality_report_edit, 1)
-        layout.addWidget(report_card, 1)
+        content_layout.addWidget(report_card)
+
+        ai_card = QFrame()
+        ai_card.setObjectName("OutputCard")
+        ai_layout = QVBoxLayout(ai_card)
+        ai_layout.setContentsMargins(22, 20, 22, 20)
+        ai_layout.setSpacing(12)
+        ai_title = QLabel("AI quality review")
+        ai_title.setObjectName("CardTitle")
+        self.ai_review_status_label = QLabel("No AI review yet.")
+        self.ai_review_status_label.setObjectName("CardText")
+        self.ai_quality_review_edit = QPlainTextEdit()
+        self.ai_quality_review_edit.setMinimumHeight(300)
+        self.ai_quality_review_edit.setPlainText("No AI review yet. Run the quality check first.")
+        ai_layout.addWidget(ai_title)
+        ai_layout.addWidget(self.ai_review_status_label)
+        ai_layout.addWidget(self.ai_quality_review_edit, 1)
+        content_layout.addWidget(ai_card)
+        content_layout.addStretch(1)
+
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
         return page
 
     def _build_export_page(self) -> QWidget:
@@ -1184,6 +1263,7 @@ class ResuBuilderQtApp(QMainWindow):
             "generated_cv": self.generated_cv,
             "generated_covering_letter": self.generated_covering_letter,
             "quality_report": self._quality_report_text(),
+            "ai_quality_review": self.ai_quality_review,
             "job_fit_analysis": self.job_fit_analysis,
             "ui_state": {
                 "document_type": self.document_type_combo.currentText() if hasattr(self, "document_type_combo") else "CV",
@@ -1217,7 +1297,8 @@ class ResuBuilderQtApp(QMainWindow):
             f"Covering letter generated: {'yes' if self.generated_covering_letter.strip() else 'no'}\n"
             f"Structured evidence blocks: {len(self.evidence_entries)}\n"
             f"Job fit analysis: {'yes' if self.job_fit_analysis.strip() else 'no'}\n"
-            f"Quality report: {'yes' if self._quality_report_text() != 'No quality report exported from the Qt experiment.' else 'no'}"
+            f"Quality report: {'yes' if self._quality_report_text() != 'No quality report exported from the Qt experiment.' else 'no'}\n"
+            f"AI quality review: {'yes' if self.ai_quality_review.strip() else 'no'}"
         )
 
     def _suggest_workspace_path(self) -> Path:
@@ -1251,6 +1332,7 @@ class ResuBuilderQtApp(QMainWindow):
         self.generated_cv = ""
         self.generated_covering_letter = ""
         self.job_fit_analysis = ""
+        self.ai_quality_review = ""
         if hasattr(self, "job_fit_edit"):
             self.job_fit_edit.clear()
         if hasattr(self, "job_fit_status_label"):
@@ -1259,6 +1341,10 @@ class ResuBuilderQtApp(QMainWindow):
             self.output_edit.clear()
         if hasattr(self, "quality_report_edit"):
             self.quality_report_edit.setPlainText("No report yet.")
+        if hasattr(self, "ai_quality_review_edit"):
+            self.ai_quality_review_edit.setPlainText("No AI review yet. Run the quality check first.")
+        if hasattr(self, "ai_review_status_label"):
+            self.ai_review_status_label.setText("No AI review yet.")
         if hasattr(self, "review_score_label"):
             self.review_score_label.setText("No quality check run yet")
         if hasattr(self, "review_status_label"):
@@ -1363,6 +1449,11 @@ class ResuBuilderQtApp(QMainWindow):
             self.output_edit.clear()
         quality_report = str(snapshot.get("quality_report", "") or "")
         self.quality_report_edit.setPlainText(quality_report or "No report yet.")
+        self.ai_quality_review = str(snapshot.get("ai_quality_review", "") or "")
+        if hasattr(self, "ai_quality_review_edit"):
+            self.ai_quality_review_edit.setPlainText(self.ai_quality_review or "No AI review saved in this workspace.")
+        if hasattr(self, "ai_review_status_label"):
+            self.ai_review_status_label.setText("AI review loaded from workspace." if self.ai_quality_review.strip() else "No AI review saved in this workspace.")
         self.job_fit_analysis = str(snapshot.get("job_fit_analysis", "") or "")
         if hasattr(self, "job_fit_edit"):
             self.job_fit_edit.setPlainText(self.job_fit_analysis)
@@ -1833,8 +1924,15 @@ class ResuBuilderQtApp(QMainWindow):
         QMessageBox.critical(self, "Generation failed", error)
 
     def closeEvent(self, event) -> None:  # noqa: N802, Qt override name.
-        if self._generation_running or self._job_fit_running:
-            active_task = "AI generation" if self._generation_running else "job fit analysis"
+        if self._generation_running or self._job_fit_running or self._ai_review_running or self._improvement_running:
+            if self._generation_running:
+                active_task = "AI generation"
+            elif self._job_fit_running:
+                active_task = "job fit analysis"
+            elif self._ai_review_running:
+                active_task = "AI quality review"
+            else:
+                active_task = "quality improvement"
             answer = QMessageBox.question(
                 self,
                 "AI task running",
@@ -1904,6 +2002,216 @@ class ResuBuilderQtApp(QMainWindow):
         self.quality_report_edit.setPlainText(formatted)
         self.review_score_label.setText(f"{report.score}/100")
         self.review_status_label.setText(report.verdict)
+        self.ai_quality_review = ""
+        if hasattr(self, "ai_quality_review_edit"):
+            self.ai_quality_review_edit.setPlainText("AI review cleared because a new quality check was run.")
+        if hasattr(self, "ai_review_status_label"):
+            self.ai_review_status_label.setText("Run AI Quality Review when you are ready for strategic critique.")
+
+    def _build_review_generation_request(self, document_type: str) -> GenerationRequest:
+        return GenerationRequest(
+            profile=self._build_profile(),
+            job_description=self._combined_job_brief(),
+            template_name=self.template_combo.currentText() if hasattr(self, "template_combo") else "ATS Friendly",
+            document_type=document_type,
+            ai_settings=self._settings_to_ai_settings(),
+            job_fit_analysis=self.job_fit_analysis,
+        )
+
+    def _quality_report_ready_text(self) -> str:
+        if not hasattr(self, "quality_report_edit"):
+            return ""
+        text = self.quality_report_edit.toPlainText().strip()
+        if not text or text == "No report yet.":
+            return ""
+        return text
+
+    def _set_review_action_buttons_enabled(self, enabled: bool) -> None:
+        for name in ("run_quality_button", "run_ai_review_button", "improve_quality_button"):
+            button = getattr(self, name, None)
+            if button is not None:
+                button.setEnabled(enabled)
+
+    def _start_ai_quality_review(self) -> None:
+        document_type, text = self._selected_review_document_text()
+        if not text.strip():
+            QMessageBox.warning(self, "Cannot run AI review", f"Generate a {document_type} first.")
+            return
+        ok, message = self._validate_profile()
+        if not ok:
+            QMessageBox.warning(self, "Cannot run AI review", message)
+            return
+        ok, message = self._validate_job_details()
+        if not ok:
+            QMessageBox.warning(self, "Cannot run AI review", message)
+            return
+        heuristic_report = self._quality_report_ready_text()
+        if not heuristic_report:
+            QMessageBox.warning(self, "Run quality check first", "Run the rule-based Quality Check before AI Quality Review.")
+            return
+        if self._ai_review_running or self._improvement_running:
+            QMessageBox.information(self, "Review task running", "Wait for the current review or improvement task to finish.")
+            return
+
+        self._ai_review_running = True
+        self._ai_review_job_id += 1
+        job_id = self._ai_review_job_id
+        request = self._build_review_generation_request(document_type)
+        self._set_review_action_buttons_enabled(False)
+        self.ai_review_status_label.setText(f"Running AI quality review with {request.ai_settings.provider} / {request.ai_settings.ollama_model}...")
+        self.ai_quality_review_edit.setPlainText("Working. The AI is reading the selected document, job details, candidate evidence, and quality report.")
+        self._write_qt_log(f"AI quality review started: job_id={job_id}, type={document_type}")
+
+        thread = threading.Thread(
+            target=self._run_ai_review_worker,
+            args=(job_id, request, text, heuristic_report),
+            daemon=True,
+        )
+        thread.start()
+
+    def _run_ai_review_worker(self, job_id: int, request: GenerationRequest, document_text: str, heuristic_report: str) -> None:
+        try:
+            result = self.ai_service.review_document(
+                request=request,
+                generated_document=document_text,
+                heuristic_report=heuristic_report,
+            )
+            if result is None:
+                raise RuntimeError("AI service returned no review text.")
+        except Exception as exc:  # noqa: BLE001
+            self._write_qt_log("AI quality review failed:\n" + traceback.format_exc())
+            self.ai_review_signals.failed.emit(job_id, str(exc))
+            return
+        self._write_qt_log(f"AI quality review finished: job_id={job_id}, chars={len(str(result))}")
+        self.ai_review_signals.finished.emit(job_id, str(result))
+
+    def _ai_review_finished(self, job_id: int, text: str) -> None:
+        if job_id != self._ai_review_job_id:
+            return
+        self._ai_review_running = False
+        self._set_review_action_buttons_enabled(True)
+        self.ai_quality_review = text.strip()
+        self.ai_quality_review_edit.setPlainText(self.ai_quality_review or "AI review returned empty text.")
+        self.ai_review_status_label.setText("AI quality review complete. Use Improve with Quality Fixes only after reading it.")
+        self._update_workspace_status("AI quality review complete. Save the workspace to preserve it.")
+
+    def _ai_review_failed(self, job_id: int, error: str) -> None:
+        if job_id != self._ai_review_job_id:
+            return
+        self._ai_review_running = False
+        self._set_review_action_buttons_enabled(True)
+        self.ai_review_status_label.setText("AI quality review failed.")
+        self.ai_quality_review_edit.setPlainText("AI quality review failed. Check data/logs/qt_gui.log for details.")
+        QMessageBox.critical(self, "AI review failed", error)
+
+    def _start_quality_improvement(self) -> None:
+        document_type, text = self._selected_review_document_text()
+        if not text.strip():
+            QMessageBox.warning(self, "Cannot improve document", f"Generate a {document_type} first.")
+            return
+        ok, message = self._validate_profile()
+        if not ok:
+            QMessageBox.warning(self, "Cannot improve document", message)
+            return
+        ok, message = self._validate_job_details()
+        if not ok:
+            QMessageBox.warning(self, "Cannot improve document", message)
+            return
+        heuristic_report = self._quality_report_ready_text()
+        if not heuristic_report:
+            QMessageBox.warning(self, "Run quality check first", "Run the rule-based Quality Check before improving the document.")
+            return
+        if self._ai_review_running or self._improvement_running:
+            QMessageBox.information(self, "Review task running", "Wait for the current review or improvement task to finish.")
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "Improve selected document",
+            f"Improve the selected {document_type}? This replaces the current generated {document_type} text. Save your workspace first if you want to preserve the current version.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        self._improvement_running = True
+        self._improvement_job_id += 1
+        job_id = self._improvement_job_id
+        request = self._build_review_generation_request(document_type)
+        ai_review = self.ai_quality_review_edit.toPlainText().strip() if hasattr(self, "ai_quality_review_edit") else self.ai_quality_review
+        if ai_review.startswith("No AI review") or ai_review.startswith("AI review cleared"):
+            ai_review = ""
+
+        self._set_review_action_buttons_enabled(False)
+        self.review_status_label.setText(f"Improving {document_type} with {request.ai_settings.provider} / {request.ai_settings.ollama_model}...")
+        self.ai_review_status_label.setText("Improvement running. Do not close the app.")
+        self.output_edit.setPlainText(f"Improving {document_type} with quality fixes. The improved text will replace this screen when finished.")
+        self.document_type_combo.setCurrentText(document_type)
+        self.show_page("Generate")
+        self._write_qt_log(f"Quality improvement started: job_id={job_id}, type={document_type}")
+
+        thread = threading.Thread(
+            target=self._run_improvement_worker,
+            args=(job_id, request, text, heuristic_report, ai_review),
+            daemon=True,
+        )
+        thread.start()
+
+    def _run_improvement_worker(
+        self,
+        job_id: int,
+        request: GenerationRequest,
+        document_text: str,
+        heuristic_report: str,
+        ai_review: str,
+    ) -> None:
+        try:
+            result = self.ai_service.improve_document(
+                request=request,
+                generated_document=document_text,
+                heuristic_report=heuristic_report,
+                ai_review=ai_review,
+            )
+            if result is None:
+                raise RuntimeError("AI service returned no improved document.")
+        except Exception as exc:  # noqa: BLE001
+            self._write_qt_log("Quality improvement failed:\n" + traceback.format_exc())
+            self.improve_signals.failed.emit(job_id, str(exc))
+            return
+        self._write_qt_log(f"Quality improvement finished: job_id={job_id}, chars={len(str(result))}")
+        self.improve_signals.finished.emit(job_id, request.document_type, str(result))
+
+    def _improvement_finished(self, job_id: int, document_type: str, text: str) -> None:
+        if job_id != self._improvement_job_id:
+            return
+        self._improvement_running = False
+        self._set_review_action_buttons_enabled(True)
+        if document_type == "CV":
+            self.generated_cv = text
+        else:
+            self.generated_covering_letter = text
+        self.output_edit.setPlainText(text)
+        self.document_type_combo.setCurrentText(document_type)
+        self.review_document_combo.setCurrentText(document_type)
+        self.status_label.setText(f"{document_type} improved with quality fixes. Run Quality Check again before exporting.")
+        self.review_status_label.setText("Improvement complete. Run Quality Check again before export.")
+        self.ai_review_status_label.setText("Improvement complete. Previous AI review may no longer match the improved text.")
+        self.ai_quality_review = ""
+        self.ai_quality_review_edit.setPlainText("Improvement complete. Run AI Quality Review again if needed.")
+        self.quality_report_edit.setPlainText("Improvement complete. Run Quality Check again to score the updated document.")
+        self.review_score_label.setText("Needs new quality check")
+        self._update_workspace_status(f"{document_type} improved. Save the workspace to preserve the updated document.")
+        self.show_page("Generate")
+
+    def _improvement_failed(self, job_id: int, error: str) -> None:
+        if job_id != self._improvement_job_id:
+            return
+        self._improvement_running = False
+        self._set_review_action_buttons_enabled(True)
+        self.review_status_label.setText("Improvement failed.")
+        self.ai_review_status_label.setText("Improvement failed.")
+        QMessageBox.critical(self, "Improvement failed", error)
 
     def _selected_export_document_text(self) -> tuple[str, str]:
         document_type = self.export_document_combo.currentText() if hasattr(self, "export_document_combo") else "CV"
@@ -1931,10 +2239,22 @@ class ResuBuilderQtApp(QMainWindow):
         return cleaned or fallback
 
     def _quality_report_text(self) -> str:
+        parts: list[str] = []
         if hasattr(self, "quality_report_edit"):
             text = self.quality_report_edit.toPlainText().strip()
-            if text and text != "No report yet.":
-                return text
+            if text and text != "No report yet." and not text.startswith("Improvement complete"):
+                parts.append(text)
+        review_text = ""
+        if hasattr(self, "ai_quality_review_edit"):
+            review_text = self.ai_quality_review_edit.toPlainText().strip()
+        review_text = review_text or self.ai_quality_review.strip()
+        if review_text and not review_text.startswith("No AI review") and not review_text.startswith("AI review cleared") and not review_text.startswith("Improvement complete"):
+            if review_text.lstrip().startswith("# AI Quality Review"):
+                parts.append(review_text)
+            else:
+                parts.append("# AI Quality Review\n\n" + review_text)
+        if parts:
+            return "\n\n---\n\n".join(parts)
         return "No quality report exported from the Qt experiment."
 
     def _export_settings(self) -> tuple[str, str]:
@@ -2020,6 +2340,7 @@ class ResuBuilderQtApp(QMainWindow):
             "generated_cv": self.generated_cv,
             "generated_covering_letter": self.generated_covering_letter,
             "quality_report": self._quality_report_text(),
+            "ai_quality_review": self.ai_quality_review,
             "settings": {
                 "provider": self.app_settings.ai_provider,
                 "ollama_model": self.app_settings.ollama_model,

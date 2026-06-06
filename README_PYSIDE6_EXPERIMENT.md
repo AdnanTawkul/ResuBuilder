@@ -160,3 +160,13 @@ The Qt experiment now uses custom silent confirmation and information dialogs in
 - Removed redundant company and role fields from the Export page.
 - Export filenames and package metadata now use the Job page values.
 - Generation, job fit analysis, quality check, workspace save/load, and package export now use a combined structured job brief.
+
+## Step 24O - Qt AI Quality Review and Improve with Quality Fixes
+
+- Added AI Quality Review to the Qt Review page.
+- Added Improve with Quality Fixes for the selected CV or covering letter.
+- Runs AI review and improvement in background threads.
+- Disables review buttons while long AI tasks are running.
+- Saves and restores AI quality review text in workspace JSON.
+- Includes AI review text in exported quality reports when available.
+- Keeps the old GUI untouched.
