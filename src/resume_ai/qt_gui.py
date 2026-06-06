@@ -196,6 +196,13 @@ class GenerationSignals(QObject):
     failed = Signal(int, str)
 
 
+class JobFitSignals(QObject):
+    """Signals for the Ollama job-fit analyzer embedded in the Generate page."""
+
+    finished = Signal(int, str)
+    failed = Signal(int, str)
+
+
 class Card(QFrame):
     def __init__(self, title: str = "", subtitle: str = "", parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -232,14 +239,20 @@ class ResuBuilderQtApp(QMainWindow):
         self.app_settings: AppSettings = load_app_settings()
         self.generated_cv = ""
         self.generated_covering_letter = ""
+        self.job_fit_analysis = ""
         self.evidence_entries: list[dict[str, str]] = []
         self._legacy_structured_evidence_text = ""
         self.current_workspace_path: Path | None = None
         self._generation_running = False
         self._generation_job_id = 0
+        self._job_fit_running = False
+        self._job_fit_job_id = 0
         self.generation_signals = GenerationSignals()
         self.generation_signals.finished.connect(self._generation_finished)
         self.generation_signals.failed.connect(self._generation_failed)
+        self.job_fit_signals = JobFitSignals()
+        self.job_fit_signals.finished.connect(self._job_fit_finished)
+        self.job_fit_signals.failed.connect(self._job_fit_failed)
 
         self.page_buttons: dict[str, QPushButton] = {}
         self.pages: dict[str, QWidget] = {}
@@ -689,7 +702,7 @@ class ResuBuilderQtApp(QMainWindow):
     def _build_generate_page(self) -> QWidget:
         page, layout = self._page_container(
             "Generate",
-            "Generate a CV or covering letter through the existing AIService. This proves the Qt shell can use the backend.",
+            "Analyze fit, then generate a CV or covering letter through the existing AIService.",
         )
 
         scroll = QScrollArea()
@@ -704,7 +717,29 @@ class ResuBuilderQtApp(QMainWindow):
         content_layout.setContentsMargins(0, 0, 14, 0)
         content_layout.setSpacing(20)
 
-        controls = Card("Generation controls", "Use Ollama first. Keep prompts conservative while testing the new GUI.")
+        fit_card = Card(
+            "Job fit analyzer",
+            "Run this before generation. It tells the generator what to emphasize, what is weak, and what must not be claimed.",
+        )
+        fit_row = QHBoxLayout()
+        fit_row.setSpacing(12)
+        self.job_fit_button = QPushButton("Analyze Job Fit with Ollama")
+        self.job_fit_button.setObjectName("PrimaryButton")
+        self.job_fit_button.setMinimumHeight(48)
+        self.job_fit_button.clicked.connect(self._start_job_fit_analysis)
+        self.job_fit_status_label = QLabel("No job fit analysis yet. Generate without it only for quick tests.")
+        self.job_fit_status_label.setObjectName("CardText")
+        self.job_fit_status_label.setWordWrap(True)
+        fit_row.addWidget(self.job_fit_button)
+        fit_row.addWidget(self.job_fit_status_label, 1)
+        fit_card.layout.addLayout(fit_row)
+        self.job_fit_edit = QPlainTextEdit()
+        self.job_fit_edit.setMinimumHeight(240)
+        self.job_fit_edit.setPlaceholderText("Job fit analysis will appear here and will be included automatically in the next CV or covering-letter prompt.")
+        fit_card.layout.addWidget(self.job_fit_edit, 1)
+        content_layout.addWidget(fit_card)
+
+        controls = Card("Generation controls", "Use the job fit strategy above when available. Keep prompts conservative while testing the new GUI.")
         controls.setMinimumHeight(176)
         controls_grid = QGridLayout()
         controls_grid.setHorizontalSpacing(18)
@@ -1059,6 +1094,7 @@ class ResuBuilderQtApp(QMainWindow):
             "generated_cv": self.generated_cv,
             "generated_covering_letter": self.generated_covering_letter,
             "quality_report": self._quality_report_text(),
+            "job_fit_analysis": self.job_fit_analysis,
             "ui_state": {
                 "document_type": self.document_type_combo.currentText() if hasattr(self, "document_type_combo") else "CV",
                 "template_name": template_name,
@@ -1090,6 +1126,7 @@ class ResuBuilderQtApp(QMainWindow):
             f"CV generated: {'yes' if self.generated_cv.strip() else 'no'}\n"
             f"Covering letter generated: {'yes' if self.generated_covering_letter.strip() else 'no'}\n"
             f"Structured evidence blocks: {len(self.evidence_entries)}\n"
+            f"Job fit analysis: {'yes' if self.job_fit_analysis.strip() else 'no'}\n"
             f"Quality report: {'yes' if self._quality_report_text() != 'No quality report exported from the Qt experiment.' else 'no'}"
         )
 
@@ -1117,6 +1154,11 @@ class ResuBuilderQtApp(QMainWindow):
             self.job_description_edit.clear()
         self.generated_cv = ""
         self.generated_covering_letter = ""
+        self.job_fit_analysis = ""
+        if hasattr(self, "job_fit_edit"):
+            self.job_fit_edit.clear()
+        if hasattr(self, "job_fit_status_label"):
+            self.job_fit_status_label.setText("No job fit analysis yet. Generate without it only for quick tests.")
         if hasattr(self, "output_edit"):
             self.output_edit.clear()
         if hasattr(self, "quality_report_edit"):
@@ -1216,6 +1258,11 @@ class ResuBuilderQtApp(QMainWindow):
             self.output_edit.clear()
         quality_report = str(snapshot.get("quality_report", "") or "")
         self.quality_report_edit.setPlainText(quality_report or "No report yet.")
+        self.job_fit_analysis = str(snapshot.get("job_fit_analysis", "") or "")
+        if hasattr(self, "job_fit_edit"):
+            self.job_fit_edit.setPlainText(self.job_fit_analysis)
+        if hasattr(self, "job_fit_status_label"):
+            self.job_fit_status_label.setText("Job fit analysis loaded from workspace." if self.job_fit_analysis.strip() else "No job fit analysis saved in this workspace.")
         ui_state = snapshot.get("ui_state") or {}
         if ui_state.get("template_name"):
             self.template_combo.setCurrentText(str(ui_state.get("template_name")))
@@ -1545,6 +1592,75 @@ class ResuBuilderQtApp(QMainWindow):
             timeout_seconds=self.app_settings.timeout_seconds,
         )
 
+    def _start_job_fit_analysis(self) -> None:
+        ok, message = self._validate_profile()
+        if not ok:
+            QMessageBox.warning(self, "Cannot analyze job fit", message)
+            return
+        job_description = self.job_description_edit.toPlainText().strip() if hasattr(self, "job_description_edit") else ""
+        if not job_description:
+            QMessageBox.warning(self, "Cannot analyze job fit", "Paste a job description before running the job fit analyzer.")
+            return
+        if self._job_fit_running:
+            QMessageBox.information(self, "Job fit analysis running", "Wait for the current job fit analysis to finish.")
+            return
+
+        self._job_fit_running = True
+        self._job_fit_job_id += 1
+        job_id = self._job_fit_job_id
+        settings = self._settings_to_ai_settings()
+        company = self.workspace_company_edit.text().strip() if hasattr(self, "workspace_company_edit") else ""
+        role = self.workspace_role_edit.text().strip() if hasattr(self, "workspace_role_edit") else ""
+
+        self.job_fit_button.setEnabled(False)
+        self.job_fit_status_label.setText(f"Analyzing fit with Ollama / {settings.ollama_model}. This can take a while.")
+        self.job_fit_edit.setPlainText("Working. The result will be used automatically by the next CV or covering-letter generation.")
+        self._write_qt_log(f"Job fit analysis started: job_id={job_id}, model={settings.ollama_model}")
+
+        thread = threading.Thread(
+            target=self._run_job_fit_worker,
+            args=(job_id, self._build_profile(), job_description, settings, company, role),
+            daemon=True,
+        )
+        thread.start()
+
+    def _run_job_fit_worker(self, job_id: int, profile: CandidateProfile, job_description: str, settings: AISettings, company: str, role: str) -> None:
+        try:
+            result = self.ai_service.analyze_job_fit(
+                profile=profile,
+                job_description=job_description,
+                settings=settings,
+                target_company=company,
+                target_role=role,
+            )
+            if result is None:
+                raise RuntimeError("AI service returned no job fit analysis.")
+        except Exception as exc:  # noqa: BLE001
+            self._write_qt_log("Job fit analysis failed:\n" + traceback.format_exc())
+            self.job_fit_signals.failed.emit(job_id, str(exc))
+            return
+        self._write_qt_log(f"Job fit analysis finished: job_id={job_id}, chars={len(str(result))}")
+        self.job_fit_signals.finished.emit(job_id, str(result))
+
+    def _job_fit_finished(self, job_id: int, text: str) -> None:
+        if job_id != self._job_fit_job_id:
+            return
+        self._job_fit_running = False
+        self.job_fit_button.setEnabled(True)
+        self.job_fit_analysis = text.strip()
+        self.job_fit_edit.setPlainText(self.job_fit_analysis)
+        self.job_fit_status_label.setText("Job fit analysis complete. The next generated document will use this strategy.")
+        self._update_workspace_status("Job fit analysis complete. Save the workspace to preserve it.")
+
+    def _job_fit_failed(self, job_id: int, error: str) -> None:
+        if job_id != self._job_fit_job_id:
+            return
+        self._job_fit_running = False
+        self.job_fit_button.setEnabled(True)
+        self.job_fit_edit.setPlainText("")
+        self.job_fit_status_label.setText("Job fit analysis failed.")
+        QMessageBox.critical(self, "Job fit analysis failed", error)
+
     def _start_generation(self) -> None:
         ok, message = self._validate_profile()
         if not ok:
@@ -1564,6 +1680,7 @@ class ResuBuilderQtApp(QMainWindow):
             template_name=self.template_combo.currentText(),
             document_type=document_type,
             ai_settings=self._settings_to_ai_settings(),
+            job_fit_analysis=self.job_fit_analysis,
         )
         context = QtGenerationContext(document_type=document_type, request=request)
 
@@ -1613,11 +1730,12 @@ class ResuBuilderQtApp(QMainWindow):
         QMessageBox.critical(self, "Generation failed", error)
 
     def closeEvent(self, event) -> None:  # noqa: N802, Qt override name.
-        if self._generation_running:
+        if self._generation_running or self._job_fit_running:
+            active_task = "AI generation" if self._generation_running else "job fit analysis"
             answer = QMessageBox.question(
                 self,
-                "Generation running",
-                "AI generation is still running. Closing now will cancel the visible result. Close anyway?",
+                "AI task running",
+                f"{active_task} is still running. Closing now will cancel the visible result. Close anyway?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )

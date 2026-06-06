@@ -18,6 +18,9 @@ Working in the Qt prototype:
 - Structured Evidence Builder page
 - Structured evidence saved inside profiles and workspaces
 - Structured evidence included in generation through the existing backend profile model
+- Job Fit Analyzer embedded inside the Generate page
+- Job fit strategy is included automatically in CV and covering-letter generation
+- Job fit analysis saved and restored through workspace JSON files
 - Save/load complete application workspace JSON files
 - File menu actions for workspace new/load/save/save-as
 - Generate CV
@@ -33,7 +36,6 @@ Working in the Qt prototype:
 
 Still placeholder or partial:
 
-- Job Fit Analyzer
 - AI Quality Review
 - Improve with Quality Fixes
 
@@ -69,6 +71,18 @@ You can also use **Import Profile JSON** and **Export Profile JSON** to move tes
 5. Save the profile or workspace so the evidence persists.
 
 Good evidence is specific. Bad evidence is vague. Do not add fake metrics or unsupported technologies just to improve a score.
+
+
+## Job Fit workflow
+
+1. Open **Generate**.
+2. Paste the target job description.
+3. Click **Analyze Job Fit with Ollama** before generating.
+4. Review strong alignment, weak alignment, unsupported claims, and generation instructions.
+5. Generate the CV or covering letter. The stored job fit strategy is passed automatically into the generation request.
+6. Save the workspace so the job fit analysis is restored next time.
+
+The Job Fit Analyzer intentionally runs through Ollama/local AI. It should prevent the generator from chasing unsupported job keywords or inventing evidence.
 
 ## Export page layout
 
@@ -117,3 +131,12 @@ Do not merge this branch into `main` until the Qt interface reaches feature pari
 ## Step 24L quiet dialog update
 
 The Qt experiment now uses custom silent confirmation and information dialogs instead of native QMessageBox convenience windows. This prevents Windows notification sounds when saving workspaces, loading profiles, exporting files, or showing validation messages.
+
+
+## Step 24M - Qt Job Fit Analyzer inside Generate
+
+- Added the Job Fit Analyzer directly above the generation controls.
+- Runs Ollama job-fit analysis from the Generate page.
+- Stores the analysis in the workspace snapshot.
+- Passes the analysis into `GenerationRequest.job_fit_analysis` so CV and covering-letter prompts use the strategy automatically.
+- Keeps the old GUI untouched.
