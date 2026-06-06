@@ -9,6 +9,7 @@ Resume AI 2 is a local desktop application for tailoring CVs and covering letter
 - Structured evidence builder for projects, jobs, tools, outcomes, proof, and job signals
 - Job description input
 - AI-powered Job Fit Analyzer using Ollama before generation
+- App settings persistence for AI, template, PDF, and folder defaults
 - Existing CV and covering letter input
 - Existing PDF CV/covering-letter import
 - PDF/text job description import
@@ -137,6 +138,32 @@ It produces:
 
 The analysis is automatically included in the next CV and covering-letter generation prompt. This prevents the app from chasing unsupported keywords or producing fake alignment.
 
+## App settings persistence
+
+The app now saves non-secret preferences locally under:
+
+```text
+data/settings.json
+```
+
+Saved settings include:
+
+```text
+- AI provider
+- OpenAI model name, but not the API key
+- Ollama base URL
+- Ollama model
+- Timeout seconds
+- Generation mode
+- Default document template
+- Default PDF template
+- Default PDF page size
+- Last workspace folder
+- Last export folder
+```
+
+The app saves settings on close and also has **Save App Settings** and **Reset App Settings** buttons in the AI Settings tab. OpenAI session API keys are deliberately not saved.
+
 ## Local AI setup
 
 Install Ollama, then run:
@@ -181,6 +208,7 @@ Timeout: 240
 15. Confirm structured evidence, job fit analysis, imported text, generated output, and quality report restore correctly.
 16. Click Export Application Package only after manual verification.
 17. Confirm the export folder contains the CV PDF, covering letter PDF, quality report, and summary JSON.
+18. Close and reopen the app, then confirm your AI provider, Ollama model, timeout, PDF template, and page size are remembered.
 
 ## Git workflow
 
@@ -189,11 +217,11 @@ Use GitHub Desktop. Keep each major feature on its own branch until tested.
 Recommended branch:
 
 ```text
-feature/job-fit-analyzer
+feature/settings-persistence
 ```
 
 Recommended commit for this update:
 
 ```text
-Add Ollama job fit analyzer
+Add app settings persistence
 ```

@@ -14,6 +14,7 @@ from .document_importer import load_document_text
 from .models import AISettings, CandidateProfile, GenerationRequest
 from .pdf_exporter import export_markdown_to_pdf
 from .pdf_templates import get_pdf_template_names, PDF_TEMPLATES
+from .settings_manager import AppSettings, load_app_settings, save_app_settings
 from .quality_checker import analyze_document, format_quality_report
 from .storage import EXPORT_DIR, load_json, save_json, save_markdown
 from .templates import get_template_names, TEMPLATES
@@ -59,11 +60,12 @@ class ResumeAIApp(tk.Tk):
         self.minsize(980, 680)
 
         self.ai_service = AIService()
+        self.app_settings = load_app_settings()
         self.single_line_fields: dict[str, tk.StringVar] = {}
         self.multi_line_fields: dict[str, tk.Text] = {}
-        self.template_var = tk.StringVar(value="ATS Friendly")
-        self.pdf_page_size_var = tk.StringVar(value="A4")
-        self.pdf_template_var = tk.StringVar(value="ATS Friendly")
+        self.template_var = tk.StringVar(value=self.app_settings.template_name)
+        self.pdf_page_size_var = tk.StringVar(value=self.app_settings.pdf_page_size)
+        self.pdf_template_var = tk.StringVar(value=self.app_settings.pdf_template)
         self.status_var = tk.StringVar(value="Ready")
         self.application_name_var = tk.StringVar(value="")
         self.application_company_var = tk.StringVar(value="")
@@ -87,14 +89,14 @@ class ResumeAIApp(tk.Tk):
         self.last_job_fit_analysis_markdown = ""
 
         default_ai_settings = self.ai_service.get_default_settings()
-        self.ai_enabled_var = tk.BooleanVar(value=default_ai_settings.use_ai)
-        self.ai_provider_var = tk.StringVar(value=default_ai_settings.provider)
+        self.ai_enabled_var = tk.BooleanVar(value=self.app_settings.use_ai)
+        self.ai_provider_var = tk.StringVar(value=self.app_settings.ai_provider or default_ai_settings.provider)
         self.ai_api_key_var = tk.StringVar(value="")
-        self.ai_model_var = tk.StringVar(value=default_ai_settings.model)
-        self.ollama_base_url_var = tk.StringVar(value=default_ai_settings.ollama_base_url)
-        self.ollama_model_var = tk.StringVar(value=default_ai_settings.ollama_model)
-        self.ai_timeout_var = tk.StringVar(value=str(default_ai_settings.timeout_seconds))
-        self.ai_mode_var = tk.StringVar(value=default_ai_settings.generation_mode)
+        self.ai_model_var = tk.StringVar(value=self.app_settings.openai_model or default_ai_settings.model)
+        self.ollama_base_url_var = tk.StringVar(value=self.app_settings.ollama_base_url or default_ai_settings.ollama_base_url)
+        self.ollama_model_var = tk.StringVar(value=self.app_settings.ollama_model or default_ai_settings.ollama_model)
+        self.ai_timeout_var = tk.StringVar(value=str(self.app_settings.timeout_seconds or default_ai_settings.timeout_seconds))
+        self.ai_mode_var = tk.StringVar(value=self.app_settings.generation_mode or default_ai_settings.generation_mode)
         self.prompt_preview_type_var = tk.StringVar(value="Covering Letter")
         self.evidence_type_var = tk.StringVar(value="Project")
         self.evidence_title_var = tk.StringVar(value="")
@@ -112,6 +114,7 @@ class ResumeAIApp(tk.Tk):
 
         self._build_ui()
         self._load_saved_profile()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_ui(self) -> None:
         self.columnconfigure(0, weight=1)
@@ -477,6 +480,8 @@ class ResumeAIApp(tk.Tk):
         button_frame.grid(row=11, column=0, columnspan=2, sticky="ew", pady=(8, 8))
         ttk.Button(button_frame, text="Test Selected AI Provider", command=self._test_ai_connection).pack(side="left")
         ttk.Button(button_frame, text="Preview Prompt", command=self._preview_ai_prompt).pack(side="left", padx=8)
+        ttk.Button(button_frame, text="Save App Settings", command=lambda: self._save_app_settings(show_message=True)).pack(side="left")
+        ttk.Button(button_frame, text="Reset App Settings", command=self._reset_app_settings).pack(side="left", padx=8)
         ttk.Button(button_frame, text="Clear Session API Key", command=lambda: self.ai_api_key_var.set("")).pack(side="left")
         ttk.Label(button_frame, text="Preview type").pack(side="left", padx=(18, 4))
         ttk.Combobox(button_frame, textvariable=self.prompt_preview_type_var, values=["Covering Letter", "CV"], width=10, state="readonly").pack(side="left")
@@ -737,7 +742,7 @@ class ResumeAIApp(tk.Tk):
         target_path = self.current_application_path
         if save_as or target_path is None:
             selected = filedialog.asksaveasfilename(
-                initialdir=APPLICATIONS_DIR,
+                initialdir=self._application_dialog_initial_dir(),
                 initialfile=suggested_name,
                 defaultextension=".json",
                 filetypes=[("Application workspace", "*.json"), ("All files", "*.*")],
@@ -754,6 +759,8 @@ class ResumeAIApp(tk.Tk):
             return
 
         self.current_application_path = saved_path
+        self.app_settings.last_workspace_dir = str(saved_path.parent)
+        self._save_app_settings(show_message=False)
         self.application_modified_var.set(snapshot.get("saved_at", ""))
         if not self.application_created_var.get().strip():
             self.application_created_var.set(snapshot.get("metadata", {}).get("created_at", ""))
@@ -764,7 +771,7 @@ class ResumeAIApp(tk.Tk):
     def _load_application_workspace(self) -> None:
         ensure_applications_dir()
         selected = filedialog.askopenfilename(
-            initialdir=APPLICATIONS_DIR,
+            initialdir=self._application_dialog_initial_dir(),
             filetypes=[("Application workspace", "*.json"), ("All files", "*.*")],
         )
         if not selected:
@@ -773,10 +780,87 @@ class ResumeAIApp(tk.Tk):
         source_path = Path(selected)
         try:
             data = load_application_snapshot(source_path)
+            self.app_settings.last_workspace_dir = str(source_path.parent)
             self._apply_application_workspace_snapshot(data, source_path=source_path)
+            self._save_app_settings(show_message=False)
         except Exception as exc:
             messagebox.showerror("Load failed", f"Could not load application workspace:\n{exc}")
             self.status_var.set("Application workspace load failed")
+
+
+    def _application_dialog_initial_dir(self) -> Path:
+        configured = Path(self.app_settings.last_workspace_dir) if self.app_settings.last_workspace_dir else APPLICATIONS_DIR
+        return configured if configured.exists() else APPLICATIONS_DIR
+
+    def _export_dialog_initial_dir(self) -> Path:
+        configured = Path(self.app_settings.last_export_dir) if self.app_settings.last_export_dir else EXPORT_DIR
+        return configured if configured.exists() else EXPORT_DIR
+
+    def _collect_app_settings(self) -> AppSettings:
+        try:
+            timeout_seconds = int(self.ai_timeout_var.get().strip() or "120")
+        except ValueError:
+            timeout_seconds = 120
+        timeout_seconds = max(30, min(timeout_seconds, 600))
+
+        return AppSettings(
+            template_name=self.template_var.get().strip() or "ATS Friendly",
+            pdf_template=self.pdf_template_var.get().strip() or "ATS Friendly",
+            pdf_page_size=self.pdf_page_size_var.get().strip() or "A4",
+            use_ai=bool(self.ai_enabled_var.get()),
+            ai_provider=self.ai_provider_var.get().strip() or AIService.PROVIDER_OLLAMA,
+            openai_model=self.ai_model_var.get().strip() or AIService.DEFAULT_OPENAI_MODEL,
+            generation_mode=self.ai_mode_var.get().strip() or "Balanced",
+            ollama_base_url=self.ollama_base_url_var.get().strip() or AIService.DEFAULT_OLLAMA_BASE_URL,
+            ollama_model=self.ollama_model_var.get().strip() or AIService.DEFAULT_OLLAMA_MODEL,
+            timeout_seconds=timeout_seconds,
+            last_workspace_dir=self.app_settings.last_workspace_dir,
+            last_export_dir=self.app_settings.last_export_dir,
+        )
+
+    def _apply_app_settings(self, settings: AppSettings) -> None:
+        self.app_settings = settings
+        self.template_var.set(settings.template_name)
+        self.pdf_template_var.set(settings.pdf_template)
+        self.pdf_page_size_var.set(settings.pdf_page_size)
+        self.ai_enabled_var.set(settings.use_ai)
+        self.ai_provider_var.set(settings.ai_provider)
+        self.ai_model_var.set(settings.openai_model)
+        self.ai_mode_var.set(settings.generation_mode)
+        self.ollama_base_url_var.set(settings.ollama_base_url)
+        self.ollama_model_var.set(settings.ollama_model)
+        self.ai_timeout_var.set(str(settings.timeout_seconds))
+        self.ai_api_key_var.set("")
+        self._refresh_ai_provider_help()
+        self._update_template_description()
+
+    def _save_app_settings(self, show_message: bool = False) -> None:
+        self.app_settings = self._collect_app_settings()
+        try:
+            saved_path = save_app_settings(self.app_settings)
+        except Exception as exc:
+            self.status_var.set("App settings save failed")
+            if show_message:
+                messagebox.showerror("Settings save failed", f"Could not save app settings:\n{exc}")
+            return
+
+        self.status_var.set(f"App settings saved to {saved_path}")
+        if show_message:
+            messagebox.showinfo("Settings saved", f"App settings saved locally to:\n{saved_path}\n\nOpenAI session API keys are not saved.")
+
+    def _reset_app_settings(self) -> None:
+        proceed = messagebox.askyesno(
+            "Reset app settings",
+            "Reset AI, template, PDF, and folder defaults? This will not delete saved applications or your profile.",
+        )
+        if not proceed:
+            return
+        self._apply_app_settings(AppSettings())
+        self._save_app_settings(show_message=True)
+
+    def _on_close(self) -> None:
+        self._save_app_settings(show_message=False)
+        self.destroy()
 
     def _load_saved_profile(self) -> None:
         data = load_json()
@@ -1453,6 +1537,8 @@ class ResumeAIApp(tk.Tk):
             self.status_var.set("Application package export failed")
             return
 
+        self.app_settings.last_export_dir = str(package_path.parent)
+        self._save_app_settings(show_message=False)
         self.status_var.set(f"Application package exported to {package_path}")
         try:
             os.startfile(str(package_path))
@@ -1479,7 +1565,7 @@ class ResumeAIApp(tk.Tk):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_name = self._safe_filename(f"{self.last_document_type}_{self.last_candidate_name}_{timestamp}.pdf")
         path = filedialog.asksaveasfilename(
-            initialdir=EXPORT_DIR,
+            initialdir=self._export_dialog_initial_dir(),
             initialfile=safe_name,
             defaultextension=".pdf",
             filetypes=[("PDF files", "*.pdf")],

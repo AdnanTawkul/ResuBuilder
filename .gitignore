@@ -19,6 +19,7 @@ env/
 
 # Generated/private user data
 data/profile.json
+data/settings.json
 data/applications/
 data/exports/
 exports/
