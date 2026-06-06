@@ -253,3 +253,13 @@ Test checklist:
 6. Confirm the same screens remain readable.
 7. Open Settings... and confirm the theme dropdown includes both Modern 3D themes.
 8. Save settings, close the app, reopen, and confirm the selected theme is restored.
+
+
+## Step 24AA . Modern 3D interaction polish
+
+- Removes horizontal scrolling from workflow pages by fixing over-wide layouts.
+- Splits the Review action row so controls fit at the default window size.
+- Adds soft card shadows for a floating 3D feel.
+- Improves pressed button states with inset-style borders.
+- Rounds scrollbar tracks and handles more consistently.
+- Widens top menus so long options remain readable.

@@ -141,3 +141,8 @@ Next check:
 
 - Verify that the 3D themes look good across Welcome, Profile, Evidence, Job, Generate, Review, Export, and Settings.
 - Do not remove the existing Light, Dark, and Dark blue themes until the new visual direction is tested thoroughly.
+
+
+## Current polish task
+
+- Modern 3D interaction polish: horizontal scrollbar removal, floating cards, inset pressed buttons, rounded scrollbars, and wider menus.

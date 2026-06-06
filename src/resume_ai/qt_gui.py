@@ -10,13 +10,14 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QRegularExpression, Qt, QUrl, Signal
-from PySide6.QtGui import QAction, QDesktopServices, QRegularExpressionValidator
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialog,
     QFileDialog,
     QFrame,
+    QGraphicsDropShadowEffect,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -239,6 +240,7 @@ class Card(QFrame):
         super().__init__(parent)
         self.setObjectName("Card")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self._add_outer_shadow()
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(22, 20, 22, 20)
         self.layout.setSpacing(12)
@@ -251,6 +253,18 @@ class Card(QFrame):
             subtitle_label.setObjectName("CardText")
             subtitle_label.setWordWrap(True)
             self.layout.addWidget(subtitle_label)
+
+    def _add_outer_shadow(self) -> None:
+        """Add a soft outside shadow so cards feel slightly raised.
+
+        Qt stylesheets cannot render real box shadows. QGraphicsDropShadowEffect gives
+        the modern 3D themes a floating card effect without touching backend logic.
+        """
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 10)
+        shadow.setColor(QColor(0, 0, 0, 85))
+        self.setGraphicsEffect(shadow)
 
 
 class ResuBuilderQtApp(QMainWindow):
@@ -326,6 +340,23 @@ class ResuBuilderQtApp(QMainWindow):
             # Do not crash the app because a transient Qt menu wrapper was already released.
             pass
 
+    def _disable_horizontal_scroll(self, scroll: QScrollArea) -> None:
+        """Keep workflow pages readable without horizontal scrollbars.
+
+        If a page needs a horizontal scrollbar, the layout is too wide. We solve that by
+        wrapping/splitting controls instead of making the user slide sideways.
+        """
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+    def _add_frame_shadow(self, frame: QFrame) -> None:
+        """Apply the same soft floating shadow to non-Card frames."""
+        shadow = QGraphicsDropShadowEffect(frame)
+        shadow.setBlurRadius(28)
+        shadow.setOffset(0, 9)
+        shadow.setColor(QColor(0, 0, 0, 78))
+        frame.setGraphicsEffect(shadow)
+
     def _build_menu(self) -> None:
         """Build a compact top menu.
 
@@ -365,10 +396,10 @@ class ResuBuilderQtApp(QMainWindow):
         self.help_menu.addSeparator()
         self.help_menu.addAction(self._menu_action("About ResuBuilder", self._show_about))
 
-        self._set_menu_width(self.file_menu, 330)
-        self._set_menu_width(self.settings_menu, 240)
-        self._set_menu_width(self.theme_menu, 260)
-        self._set_menu_width(self.help_menu, 220)
+        self._set_menu_width(self.file_menu, 380)
+        self._set_menu_width(self.settings_menu, 300)
+        self._set_menu_width(self.theme_menu, 320)
+        self._set_menu_width(self.help_menu, 260)
 
     def _set_theme_from_menu(self, theme_name: str) -> None:
         """Apply a theme immediately from the compact top menu and remember it."""
@@ -425,8 +456,7 @@ class ResuBuilderQtApp(QMainWindow):
         scroll = QScrollArea()
         scroll.setObjectName("PageScrollArea")
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._disable_horizontal_scroll(scroll)
         content = QWidget()
         content.setObjectName("ScrollContent")
         content_layout = QVBoxLayout(content)
@@ -684,6 +714,7 @@ class ResuBuilderQtApp(QMainWindow):
 
         hero = QFrame()
         hero.setObjectName("HeroCard")
+        self._add_frame_shadow(hero)
         hero_layout = QVBoxLayout(hero)
         hero_layout.setContentsMargins(28, 28, 28, 28)
         hero_layout.setSpacing(18)
@@ -800,8 +831,7 @@ class ResuBuilderQtApp(QMainWindow):
         scroll = QScrollArea()
         scroll.setObjectName("PageScrollArea")
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._disable_horizontal_scroll(scroll)
         content = QWidget()
         content.setObjectName("ScrollContent")
         content_layout = QVBoxLayout(content)
@@ -892,8 +922,7 @@ class ResuBuilderQtApp(QMainWindow):
         scroll = QScrollArea()
         scroll.setObjectName("PageScrollArea")
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._disable_horizontal_scroll(scroll)
 
         content = QWidget()
         content.setObjectName("ScrollContent")
@@ -1011,8 +1040,7 @@ class ResuBuilderQtApp(QMainWindow):
         scroll = QScrollArea()
         scroll.setObjectName("PageScrollArea")
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._disable_horizontal_scroll(scroll)
 
         content = QWidget()
         content.setObjectName("ScrollContent")
@@ -1084,8 +1112,7 @@ class ResuBuilderQtApp(QMainWindow):
         scroll = QScrollArea()
         scroll.setObjectName("PageScrollArea")
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._disable_horizontal_scroll(scroll)
 
         content = QWidget()
         content.setObjectName("ScrollContent")
@@ -1149,6 +1176,7 @@ class ResuBuilderQtApp(QMainWindow):
 
         output_card = QFrame()
         output_card.setObjectName("OutputCard")
+        self._add_frame_shadow(output_card)
         output_card.setMinimumHeight(360)
         output_layout = QVBoxLayout(output_card)
         output_layout.setContentsMargins(22, 20, 22, 20)
@@ -1179,8 +1207,7 @@ class ResuBuilderQtApp(QMainWindow):
         scroll = QScrollArea()
         scroll.setObjectName("PageScrollArea")
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._disable_horizontal_scroll(scroll)
 
         content = QWidget()
         content.setObjectName("ScrollContent")
@@ -1192,8 +1219,14 @@ class ResuBuilderQtApp(QMainWindow):
             "Quality review workflow",
             "Use the rule-based checker for reliable basics. Then run AI review for strategic critique, or improve the selected document using the quality report.",
         )
-        row = QHBoxLayout()
-        row.setSpacing(12)
+        review_grid = QGridLayout()
+        review_grid.setHorizontalSpacing(12)
+        review_grid.setVerticalSpacing(12)
+        review_grid.setColumnStretch(0, 0)
+        review_grid.setColumnStretch(1, 1)
+        review_grid.setColumnStretch(2, 1)
+        review_grid.setColumnStretch(3, 1)
+
         self.review_document_combo = QComboBox()
         self.review_document_combo.addItems(["CV", "Covering Letter"])
         self._prepare_form_control(self.review_document_combo, min_width=220)
@@ -1215,15 +1248,15 @@ class ResuBuilderQtApp(QMainWindow):
 
         for button in (self.run_quality_button, self.run_ai_review_button, self.improve_quality_button, show_button):
             button.setMinimumHeight(46)
+            button.setMinimumWidth(190)
 
-        row.addWidget(QLabel("Document"))
-        row.addWidget(self.review_document_combo)
-        row.addWidget(self.run_quality_button)
-        row.addWidget(self.run_ai_review_button)
-        row.addWidget(self.improve_quality_button)
-        row.addWidget(show_button)
-        row.addStretch(1)
-        controls.layout.addLayout(row)
+        review_grid.addWidget(QLabel("Document"), 0, 0)
+        review_grid.addWidget(self.review_document_combo, 0, 1)
+        review_grid.addWidget(self.run_quality_button, 0, 2)
+        review_grid.addWidget(self.run_ai_review_button, 0, 3)
+        review_grid.addWidget(self.improve_quality_button, 1, 2)
+        review_grid.addWidget(show_button, 1, 3)
+        controls.layout.addLayout(review_grid)
         content_layout.addWidget(controls)
 
         score_row = QGridLayout()
@@ -1246,6 +1279,7 @@ class ResuBuilderQtApp(QMainWindow):
 
         report_card = QFrame()
         report_card.setObjectName("OutputCard")
+        self._add_frame_shadow(report_card)
         report_layout = QVBoxLayout(report_card)
         report_layout.setContentsMargins(22, 20, 22, 20)
         report_layout.setSpacing(12)
@@ -1289,8 +1323,7 @@ class ResuBuilderQtApp(QMainWindow):
         scroll = QScrollArea()
         scroll.setObjectName("PageScrollArea")
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._disable_horizontal_scroll(scroll)
 
         content = QWidget()
         content.setObjectName("ScrollContent")
@@ -1425,8 +1458,7 @@ class ResuBuilderQtApp(QMainWindow):
         scroll = QScrollArea()
         scroll.setObjectName("PageScrollArea")
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._disable_horizontal_scroll(scroll)
 
         content = QWidget()
         content.setObjectName("ScrollContent")
