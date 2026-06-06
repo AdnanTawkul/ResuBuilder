@@ -350,8 +350,27 @@ class ResuBuilderQtApp(QMainWindow):
             "Generate a CV or covering letter through the existing AIService. This proves the Qt shell can use the backend.",
         )
 
+        scroll = QScrollArea()
+        scroll.setObjectName("PageScrollArea")
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        content = QWidget()
+        content.setObjectName("ScrollContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 14, 0)
+        content_layout.setSpacing(20)
+
         controls = Card("Generation controls", "Use Ollama first. Keep prompts conservative while testing the new GUI.")
-        row = QHBoxLayout()
+        controls.setMinimumHeight(176)
+        controls_grid = QGridLayout()
+        controls_grid.setHorizontalSpacing(18)
+        controls_grid.setVerticalSpacing(14)
+        controls_grid.setColumnStretch(0, 1)
+        controls_grid.setColumnStretch(1, 1)
+        controls_grid.setColumnStretch(2, 0)
+
         self.document_type_combo = QComboBox()
         self.document_type_combo.addItems(["CV", "Covering Letter"])
         self.template_combo = QComboBox()
@@ -360,26 +379,31 @@ class ResuBuilderQtApp(QMainWindow):
             index = self.template_combo.findText(self.app_settings.template_name)
             if index >= 0:
                 self.template_combo.setCurrentIndex(index)
+
         self.generate_button = QPushButton("Generate Document")
         self.generate_button.setObjectName("PrimaryButton")
+        self.generate_button.setMinimumHeight(48)
+        self.generate_button.setMinimumWidth(180)
         self.generate_button.clicked.connect(self._start_generation)
-        row.addWidget(QLabel("Document"))
-        row.addWidget(self.document_type_combo)
-        row.addWidget(QLabel("Template"))
-        row.addWidget(self.template_combo)
-        row.addWidget(self.generate_button)
-        row.addStretch(1)
-        controls.layout.addLayout(row)
-        layout.addWidget(controls)
+
+        self._prepare_form_control(self.document_type_combo, min_width=240)
+        self._prepare_form_control(self.template_combo, min_width=280)
+        self._add_labeled_field(controls_grid, 0, 0, "Document", self.document_type_combo)
+        self._add_labeled_field(controls_grid, 0, 1, "Template", self.template_combo)
+        controls_grid.addWidget(self.generate_button, 0, 2, alignment=Qt.AlignmentFlag.AlignBottom)
+        controls.layout.addLayout(controls_grid)
+        content_layout.addWidget(controls)
 
         job_card = Card("Job description", "Paste the target job. The stronger this input, the better the output.")
         self.job_description_edit = QTextEdit()
-        self.job_description_edit.setMinimumHeight(160)
+        self.job_description_edit.setMinimumHeight(220)
+        self.job_description_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         job_card.layout.addWidget(self.job_description_edit)
-        layout.addWidget(job_card)
+        content_layout.addWidget(job_card)
 
         output_card = QFrame()
         output_card.setObjectName("OutputCard")
+        output_card.setMinimumHeight(360)
         output_layout = QVBoxLayout(output_card)
         output_layout.setContentsMargins(22, 20, 22, 20)
         output_layout.setSpacing(12)
@@ -389,10 +413,15 @@ class ResuBuilderQtApp(QMainWindow):
         self.status_label.setObjectName("CardText")
         self.output_edit = QPlainTextEdit()
         self.output_edit.setMinimumHeight(280)
+        self.output_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         output_layout.addWidget(output_title)
         output_layout.addWidget(self.status_label)
         output_layout.addWidget(self.output_edit, 1)
-        layout.addWidget(output_card, 1)
+        content_layout.addWidget(output_card)
+        content_layout.addStretch(1)
+
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
         return page
 
     def _build_review_page(self) -> QWidget:

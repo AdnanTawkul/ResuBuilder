@@ -89,3 +89,10 @@ Do not merge this branch into `main` until the Qt interface reaches feature pari
 - Fixed dark-blue scroll area background bleed that appeared as brown gaps between cards.
 - Restyled vertical and horizontal scrollbars with wider, higher-contrast handles.
 - Applied consistent page and scroll-content backgrounds across Profile and Export.
+
+## Step 24H, Generate page scroll layout cleanup
+
+- Made the Generate page scrollable, matching the Profile and Export pages.
+- Rebuilt generation controls into a grid so the document selector, template selector, and button are not clipped at the default window size.
+- Increased Job Description and Generated Output field height.
+- Kept generation logic unchanged. This is a layout-only fix.

@@ -29,3 +29,9 @@
 - Fixed dark-blue scroll area background bleed that appeared as brown gaps between cards.
 - Restyled vertical and horizontal scrollbars with wider, higher-contrast handles.
 - Applied consistent page and scroll-content backgrounds across Profile and Export.
+
+## Step 24H, Generate page layout cleanup
+
+- Added a scrollable Generate page.
+- Fixed clipped generation controls at default window size.
+- Improved text area height for job description and generated output.
