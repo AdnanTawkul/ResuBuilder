@@ -75,3 +75,11 @@
 - Added CustomTkinter dependency for a modern UI base while keeping the existing workflow logic stable.
 
 - Step 21 follow-up: cleaned the Export step controls to avoid cropped action buttons at normal window sizes.
+
+## Step 23 modern cards and profile validation
+
+- Added card-style welcome content inspired by modern dashboard layouts.
+- Improved the profile page into separate contact, identity, and career-background cards.
+- Added numeric-only telephone input validation.
+- Added email-format validation before saving, generating, or saving an application workspace.
+- Changed new-install default theme to Dark blue while preserving saved user theme choices.

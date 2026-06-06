@@ -13,7 +13,7 @@ SETTINGS_PATH = DATA_DIR / "settings.json"
 @dataclass
 class AppSettings:
     schema_version: int = 1
-    ui_theme: str = "Light"
+    ui_theme: str = "Dark blue"
     template_name: str = "ATS Friendly"
     pdf_template: str = "ATS Friendly"
     pdf_page_size: str = "A4"

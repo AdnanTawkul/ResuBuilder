@@ -11,7 +11,7 @@ ResuBuilder is a local desktop application for tailoring CVs and covering letter
 - AI-powered Job Fit Analyzer using Ollama before generation
 - App settings persistence for AI, template, PDF, and folder defaults
 - Sidebar workflow GUI with step status, skip options, and simplified navigation
-- Modern visual theme with cleaner spacing, updated typography, highlighted workflow steps, and styled text areas
+- Modern visual theme with cleaner spacing, updated typography, highlighted workflow steps, styled text areas, and card-style welcome/profile sections
 - Existing CV and covering letter input
 - Existing PDF CV/covering-letter import
 - PDF/text job description import
@@ -40,6 +40,7 @@ ResuBuilder is a local desktop application for tailoring CVs and covering letter
 - One-click application package export
 - Separate stored generated CV and covering letter outputs
 - Package export with final PDFs, Markdown sources, quality report, and summary JSON
+- Profile validation for email format and numeric-only telephone input
 
 ## Run the app
 

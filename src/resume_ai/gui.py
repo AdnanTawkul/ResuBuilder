@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 import os
+import re
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
@@ -61,6 +62,8 @@ UI_THEME_OPTIONS = [
     "Dark",
     "Dark blue",
 ]
+
+EMAIL_PATTERN = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 
 
 class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
@@ -126,6 +129,7 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         self.evidence_outcome_var = tk.StringVar(value="")
         self.evidence_metrics_var = tk.StringVar(value="")
         self.evidence_signals_var = tk.StringVar(value="")
+        self.profile_validation_var = tk.StringVar(value="")
         self.generate_buttons: list[ttk.Button] = []
         self.improvement_buttons: list[ttk.Button] = []
         self.ai_review_buttons: list[ttk.Button] = []
@@ -157,8 +161,9 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
 
         theme_palettes = {
             "Light": {
-                "bg": "#f6f8fb",
+                "bg": "#f5f7fb",
                 "surface": "#ffffff",
+                "surface_alt": "#f8fafc",
                 "sidebar": "#eef3f8",
                 "border": "#d7dee8",
                 "text": "#111827",
@@ -166,6 +171,7 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
                 "accent": "#2563eb",
                 "accent_hover": "#1d4ed8",
                 "accent_soft": "#dbeafe",
+                "accent_two": "#ec4899",
                 "warning_soft": "#fff7ed",
                 "success_soft": "#ecfdf5",
                 "danger": "#b91c1c",
@@ -174,15 +180,17 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
                 "button_disabled": "#eef2f7",
             },
             "Dark blue": {
-                "bg": "#071426",
-                "surface": "#0f2138",
-                "sidebar": "#08111f",
-                "border": "#1e3a5f",
-                "text": "#eaf2ff",
-                "muted": "#a9bdd8",
+                "bg": "#070d1a",
+                "surface": "#0f1b2d",
+                "surface_alt": "#13243b",
+                "sidebar": "#070b14",
+                "border": "#253a5a",
+                "text": "#f2f7ff",
+                "muted": "#9fb3cc",
                 "accent": "#38bdf8",
                 "accent_hover": "#0ea5e9",
                 "accent_soft": "#12365a",
+                "accent_two": "#f472b6",
                 "warning_soft": "#3a2a12",
                 "success_soft": "#0f3b2e",
                 "danger": "#fca5a5",
@@ -191,19 +199,21 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
                 "button_disabled": "#0d1b2d",
             },
             "Dark": {
-                "bg": "#121212",
-                "surface": "#1e1e1e",
-                "sidebar": "#171717",
+                "bg": "#161616",
+                "surface": "#222225",
+                "surface_alt": "#2b2b30",
+                "sidebar": "#101012",
                 "border": "#3f3f46",
                 "text": "#f4f4f5",
                 "muted": "#c4c4cc",
-                "accent": "#a78bfa",
-                "accent_hover": "#8b5cf6",
-                "accent_soft": "#2e2546",
+                "accent": "#f472b6",
+                "accent_hover": "#ec4899",
+                "accent_soft": "#3b1f2f",
+                "accent_two": "#fb923c",
                 "warning_soft": "#3a2a12",
                 "success_soft": "#0f3b2e",
                 "danger": "#fca5a5",
-                "text_select": "#5b21b6",
+                "text_select": "#831843",
                 "button_active": "#2a2a2e",
                 "button_disabled": "#202020",
             },
@@ -240,6 +250,12 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         style.configure("Muted.TLabel", background=colors["bg"], foreground=colors["muted"], font="{Segoe UI} 9")
         style.configure("SidebarMuted.TLabel", background=colors["sidebar"], foreground=colors["muted"], font="{Segoe UI} 9")
         style.configure("Title.TLabel", background=colors["bg"], foreground=colors["text"], font="{Segoe UI} 19 bold")
+        style.configure("Hero.TLabel", background=colors["surface"], foreground=colors["text"], font="{Segoe UI} 22 bold")
+        style.configure("CardTitle.TLabel", background=colors["surface"], foreground=colors["text"], font="{Segoe UI} 12 bold")
+        style.configure("Surface.TLabel", background=colors["surface"], foreground=colors["text"], font="{Segoe UI} 10")
+        style.configure("SurfaceMuted.TLabel", background=colors["surface"], foreground=colors["muted"], font="{Segoe UI} 9")
+        style.configure("ProfileError.TLabel", background=colors["bg"], foreground=colors["danger"], font="{Segoe UI} 9 bold")
+        style.configure("Accent.TLabel", background=colors["surface"], foreground=colors["accent"], font="{Segoe UI} 13 bold")
         style.configure("AppTitle.TLabel", background=colors["sidebar"], foreground=colors["text"], font="{Segoe UI} 16 bold")
 
         style.configure(
@@ -281,7 +297,7 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         style.configure("TCombobox", fieldbackground=colors["surface"], foreground=colors["text"], padding=(8, 6), bordercolor=colors["border"])
         style.map("TCombobox", fieldbackground=[("readonly", colors["surface"])], foreground=[("readonly", colors["text"])], bordercolor=[("focus", colors["accent"])])
 
-        style.configure("TLabelframe", background=colors["bg"], bordercolor=colors["border"], relief="solid")
+        style.configure("TLabelframe", background=colors["surface"], bordercolor=colors["border"], relief="solid")
         style.configure("TLabelframe.Label", background=colors["bg"], foreground=colors["text"], font="{Segoe UI} 10 bold")
         style.configure("Horizontal.TSeparator", background=colors["border"])
 
@@ -668,46 +684,63 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
 
     def _build_welcome_step(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(0, weight=1)
-        parent.columnconfigure(1, weight=2)
-        parent.rowconfigure(1, weight=1)
+        parent.rowconfigure(2, weight=1)
 
-        logo_frame = ttk.LabelFrame(parent, text="Logo placeholder", padding=18)
-        logo_frame.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(0, 16), pady=(0, 10))
-        logo_frame.columnconfigure(0, weight=1)
-        logo_frame.rowconfigure(0, weight=1)
-        logo_label = ttk.Label(
-            logo_frame,
-            text="ResuBuilder\n\n[ Future logo here ]",
-            justify="center",
-            anchor="center",
-            style="Title.TLabel",
-        )
-        logo_label.grid(row=0, column=0, sticky="nsew")
+        hero = ttk.LabelFrame(parent, text="Welcome", padding=22)
+        hero.grid(row=0, column=0, sticky="ew", pady=(0, 14))
+        hero.columnconfigure(0, weight=1)
+        hero.columnconfigure(1, weight=0)
 
-        intro = ttk.LabelFrame(parent, text="Welcome", padding=16)
-        intro.grid(row=0, column=1, sticky="nsew", pady=(0, 10))
-        intro.columnconfigure(0, weight=1)
+        ttk.Label(hero, text="Build a targeted application package", style="Hero.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Label(
-            intro,
+            hero,
             text=(
-                "ResuBuilder helps you build a tailored CV and covering letter for one job application at a time. "
-                "It uses your profile, structured evidence, the job description, and optional job-fit analysis to generate stronger, safer documents."
+                "ResuBuilder turns your profile, structured evidence, and a job description into a tailored CV, "
+                "covering letter, quality report, and export package. The AI helps draft. You still verify every claim."
             ),
-            wraplength=760,
-        ).grid(row=0, column=0, sticky="w", pady=(0, 10))
-        ttk.Label(
-            intro,
-            text=(
-                "The app is local-first. Ollama can run AI on your machine, while OpenAI is available as an optional provider. "
-                "Generated text still needs human verification before you submit anything."
+            style="SurfaceMuted.TLabel",
+            wraplength=780,
+        ).grid(row=1, column=0, sticky="w", pady=(8, 0))
+
+        logo = ttk.Frame(hero, padding=18, style="Card.TFrame")
+        logo.grid(row=0, column=1, rowspan=2, sticky="e", padx=(24, 0))
+        ttk.Label(logo, text="RB", style="Accent.TLabel", anchor="center").grid(row=0, column=0, sticky="nsew")
+        ttk.Label(logo, text="Logo placeholder", style="SurfaceMuted.TLabel").grid(row=1, column=0, pady=(6, 0))
+
+        cards = ttk.Frame(parent, style="Content.TFrame")
+        cards.grid(row=1, column=0, sticky="ew", pady=(0, 14))
+        for col in range(3):
+            cards.columnconfigure(col, weight=1)
+
+        card_data = [
+            (
+                "01",
+                "Local-first AI",
+                "Use Ollama for free local generation. Keep OpenAI optional for final-quality passes when needed.",
             ),
-            wraplength=760,
-        ).grid(row=1, column=0, sticky="w")
+            (
+                "02",
+                "Evidence-driven",
+                "Structured evidence gives the AI proof to work with, reducing vague claims and hallucinated achievements.",
+            ),
+            (
+                "03",
+                "Review before export",
+                "Run quality checks and AI review before creating PDFs or the full application package.",
+            ),
+        ]
+        for col, (number, title, body) in enumerate(card_data):
+            card = ttk.LabelFrame(cards, text=number, padding=16)
+            card.grid(row=0, column=col, sticky="nsew", padx=(0 if col == 0 else 8, 0 if col == 2 else 8))
+            card.columnconfigure(0, weight=1)
+            ttk.Label(card, text=title, style="CardTitle.TLabel").grid(row=0, column=0, sticky="w")
+            ttk.Label(card, text=body, style="SurfaceMuted.TLabel", wraplength=330).grid(row=1, column=0, sticky="w", pady=(8, 0))
 
         quick_start = ttk.LabelFrame(parent, text="Quick start", padding=16)
-        quick_start.grid(row=1, column=1, sticky="nsew")
+        quick_start.grid(row=2, column=0, sticky="nsew")
         quick_start.columnconfigure(0, weight=1)
-        quick_text = tk.Text(quick_start, height=14, wrap="word")
+        quick_start.rowconfigure(0, weight=1)
+        quick_text = tk.Text(quick_start, height=12, wrap="word")
         quick_text.grid(row=0, column=0, sticky="nsew")
         quick_text.insert(
             "1.0",
@@ -719,12 +752,12 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
             "6. Generate the CV and covering letter.\n"
             "7. Review quality warnings before exporting.\n"
             "8. Export the complete application package.\n\n"
-            "Use the top Settings menu to configure AI models, timeouts, PDF defaults, and UI theme. Use Help for explanations of all main options.",
+            "Use Settings to configure AI models, timeouts, PDF defaults, and UI theme. Use Help for explanations of all main options.",
         )
         quick_text.configure(state="disabled")
 
         actions = ttk.Frame(parent, style="Content.TFrame")
-        actions.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        actions.grid(row=3, column=0, sticky="ew", pady=(12, 0))
         ttk.Button(actions, text="Start Workflow", style="Accent.TButton", command=lambda: self._show_workflow_step("workspace")).pack(side="left")
         ttk.Button(actions, text="Open Settings", command=self._open_settings_window).pack(side="left", padx=8)
         ttk.Button(actions, text="Open Help", command=lambda: self._show_help_window("Workflow Help", self._workflow_help_text())).pack(side="left")
@@ -958,28 +991,96 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         )
         help_text.configure(state="disabled")
 
-    def _build_personal_tab(self, parent: ttk.Frame) -> None:
-        parent.columnconfigure(1, weight=1)
-        parent.columnconfigure(3, weight=1)
-        parent.rowconfigure(6, weight=1)
+    def _validate_digits_only(self, proposed: str) -> bool:
+        """Allow only digits in the telephone field while still allowing the user to clear it."""
+        return proposed == "" or proposed.isdigit()
 
-        fields = [
-            ("name", "Name"),
-            ("email", "Email"),
-            ("phone", "Telephone"),
-            ("location", "Location"),
+    def _is_valid_email(self, email: str) -> bool:
+        return bool(EMAIL_PATTERN.fullmatch(email.strip()))
+
+    def _validate_profile_fields(self, show_message: bool = False) -> bool:
+        errors: list[str] = []
+        email = self.single_line_fields.get("email", tk.StringVar(value="")).get().strip()
+        phone = self.single_line_fields.get("phone", tk.StringVar(value="")).get().strip()
+
+        if email and not self._is_valid_email(email):
+            errors.append("Email must use a valid format, for example name@example.com.")
+        if phone and not phone.isdigit():
+            errors.append("Telephone must contain numbers only.")
+
+        message = " ".join(errors)
+        if hasattr(self, "profile_validation_var"):
+            self.profile_validation_var.set(message)
+        if errors and show_message:
+            messagebox.showwarning("Invalid profile field", "\n".join(errors))
+        return not errors
+
+    def _build_personal_tab(self, parent: ttk.Frame) -> None:
+        parent.columnconfigure(0, weight=1)
+        parent.columnconfigure(1, weight=1)
+        parent.rowconfigure(1, weight=1)
+
+        contact_card = ttk.LabelFrame(parent, text="Contact details", padding=14)
+        contact_card.grid(row=0, column=0, sticky="nsew", padx=(0, 8), pady=(0, 10))
+        contact_card.columnconfigure(1, weight=1)
+
+        identity_card = ttk.LabelFrame(parent, text="Professional identity", padding=14)
+        identity_card.grid(row=0, column=1, sticky="nsew", padx=(8, 0), pady=(0, 10))
+        identity_card.columnconfigure(1, weight=1)
+
+        phone_vcmd = (self.register(self._validate_digits_only), "%P")
+
+        contact_fields = [
+            ("name", "Name", None),
+            ("email", "Email", None),
+            ("phone", "Telephone", phone_vcmd),
+            ("location", "Location", None),
+        ]
+        for row, (key, label, vcmd) in enumerate(contact_fields):
+            ttk.Label(contact_card, text=label, style="Surface.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 10), pady=6)
+            var = tk.StringVar()
+            if key == "email":
+                var.trace_add("write", lambda *_: self._validate_profile_fields(show_message=False))
+            if key == "phone":
+                entry = ttk.Entry(contact_card, textvariable=var, validate="key", validatecommand=vcmd)
+                var.trace_add("write", lambda *_: self._validate_profile_fields(show_message=False))
+            else:
+                entry = ttk.Entry(contact_card, textvariable=var)
+            if key == "email":
+                entry.bind("<FocusOut>", lambda event: self._validate_profile_fields(show_message=False))
+            entry.grid(row=row, column=1, sticky="ew", pady=6)
+            self.single_line_fields[key] = var
+
+        ttk.Label(
+            contact_card,
+            textvariable=self.profile_validation_var,
+            style="ProfileError.TLabel",
+            wraplength=460,
+        ).grid(row=len(contact_fields), column=0, columnspan=2, sticky="w", pady=(8, 0))
+
+        identity_fields = [
             ("title", "Target / Current Title"),
             ("links", "LinkedIn / Portfolio / GitHub"),
         ]
-
-        for index, (key, label) in enumerate(fields):
-            row = index // 2
-            col = (index % 2) * 2
-            ttk.Label(parent, text=label).grid(row=row, column=col, sticky="w", padx=(0, 8), pady=6)
+        for row, (key, label) in enumerate(identity_fields):
+            ttk.Label(identity_card, text=label, style="Surface.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 10), pady=6)
             var = tk.StringVar()
-            entry = ttk.Entry(parent, textvariable=var)
-            entry.grid(row=row, column=col + 1, sticky="ew", pady=6)
+            entry = ttk.Entry(identity_card, textvariable=var)
+            entry.grid(row=row, column=1, sticky="ew", pady=6)
             self.single_line_fields[key] = var
+
+        ttk.Label(
+            identity_card,
+            text="Use a role title that fits the target job. Do not overstate seniority.",
+            style="SurfaceMuted.TLabel",
+            wraplength=480,
+        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(12, 0))
+
+        background_card = ttk.LabelFrame(parent, text="Career background", padding=14)
+        background_card.grid(row=1, column=0, columnspan=2, sticky="nsew")
+        background_card.columnconfigure(1, weight=1)
+        for row in range(6):
+            background_card.rowconfigure(row, weight=1)
 
         multi_fields = [
             ("summary", "Professional Summary"),
@@ -990,12 +1091,10 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
             ("languages", "Languages"),
         ]
 
-        row_start = 3
         for i, (key, label) in enumerate(multi_fields):
-            row = row_start + i
-            ttk.Label(parent, text=label).grid(row=row, column=0, sticky="nw", padx=(0, 8), pady=6)
-            text = tk.Text(parent, height=4, wrap="word")
-            text.grid(row=row, column=1, columnspan=3, sticky="nsew", pady=6)
+            ttk.Label(background_card, text=label, style="Surface.TLabel").grid(row=i, column=0, sticky="nw", padx=(0, 10), pady=6)
+            text = tk.Text(background_card, height=4, wrap="word")
+            text.grid(row=i, column=1, sticky="nsew", pady=6)
             self.multi_line_fields[key] = text
 
     def _build_evidence_tab(self, parent: ttk.Frame) -> None:
@@ -1505,6 +1604,8 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         self.status_var.set("New application workspace ready")
 
     def _save_application_workspace(self, save_as: bool = False) -> None:
+        if not self._validate_profile_fields(show_message=True):
+            return
         ensure_applications_dir()
         snapshot = self._collect_application_workspace_snapshot()
         metadata = snapshot.get("metadata", {})
@@ -1688,6 +1789,8 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         )
 
     def _save_profile(self) -> None:
+        if not self._validate_profile_fields(show_message=True):
+            return
         profile = self._collect_profile()
         save_json(profile.to_dict())
         self.status_var.set("Profile saved")
@@ -1699,6 +1802,8 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
 
         if not profile.name or not profile.email:
             messagebox.showwarning("Missing basics", "Add at least your name and email first.")
+            return
+        if not self._validate_profile_fields(show_message=True):
             return
         if not job_description:
             messagebox.showwarning("Missing job description", "Paste the job description before generating.")
