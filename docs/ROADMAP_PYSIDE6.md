@@ -36,3 +36,8 @@
 - Stores structured evidence entries explicitly in Qt workspace snapshots.
 - Restores evidence from both profile-level and top-level workspace fields.
 - Shows structured evidence block count in the workspace status panel.
+
+
+## Step 24L quiet dialog update
+
+The Qt experiment now uses custom silent confirmation and information dialogs instead of native QMessageBox convenience windows. This prevents Windows notification sounds when saving workspaces, loading profiles, exporting files, or showing validation messages.

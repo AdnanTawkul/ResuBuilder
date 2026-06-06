@@ -14,6 +14,7 @@ from PySide6.QtGui import QAction, QDesktopServices, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDialog,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -52,6 +53,128 @@ from .qt_theme import DARK_BLUE_QSS
 
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+class QMessageBox:
+    """Silent replacement for QMessageBox convenience dialogs.
+
+    Native QMessageBox convenience functions trigger the Windows system notification sound.
+    The Qt experiment uses this small modal dialog instead so save/load/generate notices stay quiet.
+    It intentionally mimics the subset of QMessageBox used in this file.
+    """
+
+    class StandardButton:
+        Yes = 1
+        No = 2
+
+    @staticmethod
+    def _show(parent: QWidget | None, title: str, text: str, level: str = "Info") -> int:
+        dialog = QDialog(parent)
+        dialog.setWindowTitle(title)
+        dialog.setModal(True)
+        dialog.setObjectName("SilentDialog")
+        dialog.setMinimumWidth(460)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(22, 18, 22, 18)
+        layout.setSpacing(14)
+
+        heading = QLabel(level)
+        heading.setObjectName("CardTitle")
+        layout.addWidget(heading)
+
+        message = QLabel(text)
+        message.setObjectName("CardText")
+        message.setWordWrap(True)
+        message.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(message)
+
+        button_row = QHBoxLayout()
+        button_row.addStretch(1)
+        ok_button = QPushButton("OK")
+        ok_button.setObjectName("SecondaryButton")
+        ok_button.setMinimumWidth(120)
+        ok_button.clicked.connect(dialog.accept)
+        button_row.addWidget(ok_button)
+        layout.addLayout(button_row)
+
+        ok_button.setFocus()
+        dialog.exec()
+        return QMessageBox.StandardButton.Yes
+
+    @staticmethod
+    def information(parent: QWidget | None, title: str, text: str) -> int:
+        return QMessageBox._show(parent, title, text, "Info")
+
+    @staticmethod
+    def warning(parent: QWidget | None, title: str, text: str) -> int:
+        return QMessageBox._show(parent, title, text, "Warning")
+
+    @staticmethod
+    def critical(parent: QWidget | None, title: str, text: str) -> int:
+        return QMessageBox._show(parent, title, text, "Error")
+
+    @staticmethod
+    def question(
+        parent: QWidget | None,
+        title: str,
+        text: str,
+        buttons: int | None = None,
+        default_button: int | None = None,
+    ) -> int:
+        dialog = QDialog(parent)
+        dialog.setWindowTitle(title)
+        dialog.setModal(True)
+        dialog.setObjectName("SilentDialog")
+        dialog.setMinimumWidth(520)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(22, 18, 22, 18)
+        layout.setSpacing(14)
+
+        heading = QLabel("Confirm")
+        heading.setObjectName("CardTitle")
+        layout.addWidget(heading)
+
+        message = QLabel(text)
+        message.setObjectName("CardText")
+        message.setWordWrap(True)
+        message.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(message)
+
+        result = {"value": QMessageBox.StandardButton.No}
+
+        button_row = QHBoxLayout()
+        button_row.addStretch(1)
+
+        no_button = QPushButton("No")
+        no_button.setObjectName("SecondaryButton")
+        no_button.setMinimumWidth(120)
+        yes_button = QPushButton("Yes")
+        yes_button.setObjectName("PrimaryButton")
+        yes_button.setMinimumWidth(120)
+
+        def choose_no() -> None:
+            result["value"] = QMessageBox.StandardButton.No
+            dialog.accept()
+
+        def choose_yes() -> None:
+            result["value"] = QMessageBox.StandardButton.Yes
+            dialog.accept()
+
+        no_button.clicked.connect(choose_no)
+        yes_button.clicked.connect(choose_yes)
+        button_row.addWidget(no_button)
+        button_row.addWidget(yes_button)
+        layout.addLayout(button_row)
+
+        if default_button == QMessageBox.StandardButton.Yes:
+            yes_button.setFocus()
+        else:
+            no_button.setFocus()
+
+        dialog.exec()
+        return result["value"]
+
 
 
 @dataclass
