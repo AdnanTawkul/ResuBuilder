@@ -9,6 +9,8 @@ Resume AI 2 is a local desktop application for tailoring CVs and covering letter
 - Structured evidence builder for projects, jobs, tools, outcomes, proof, and job signals
 - Job description input
 - AI-powered Job Fit Analyzer using Ollama before generation
+- App settings persistence for AI, template, PDF, and folder defaults
+- Sidebar workflow GUI with step status, skip options, and simplified navigation
 - Existing CV and covering letter input
 - Existing PDF CV/covering-letter import
 - PDF/text job description import
@@ -66,7 +68,7 @@ PDF import is best-effort. It works on normal selectable-text PDFs. It does not 
 
 ## Application workspace workflow
 
-Use the **Workspace** tab for each job application.
+Use the **Workspace** step for each job application.
 
 Recommended flow:
 
@@ -89,7 +91,7 @@ Workspace files are saved as JSON under:
 data/applications/
 ```
 
-Use **Export Application Package** in the Output tab after both final documents are generated. It creates a folder under `exports/` or your configured export directory with:
+Use **Export Application Package** in the Export step after both final documents are generated. It creates a folder under `exports/` or your configured export directory with:
 
 ```text
 - Final CV PDF
@@ -120,7 +122,7 @@ Do not commit private application workspace JSON files to GitHub unless they con
 
 ## Job Fit Analyzer workflow
 
-Use the **Job Fit Analyzer** tab before generating documents. It uses Ollama locally to compare the job description against the profile, existing CV/covering letter, and structured evidence.
+Use the **Job Fit** step before generating documents. It uses Ollama locally to compare the job description against the profile, existing CV/covering letter, and structured evidence.
 
 It produces:
 
@@ -136,6 +138,59 @@ It produces:
 ```
 
 The analysis is automatically included in the next CV and covering-letter generation prompt. This prevents the app from chasing unsupported keywords or producing fake alignment.
+
+## Sidebar workflow
+
+The app now uses a sidebar workflow instead of crowded top tabs. The workflow is:
+
+```text
+Workspace
+Profile
+Evidence
+Job Description
+Job Fit
+Generate
+Review
+Export
+Settings
+```
+
+Each step shows a status marker:
+
+```text
+✓ complete
+○ not started
+⚠ needs attention
+↷ skipped
+```
+
+Required steps cannot be skipped. Optional steps can be skipped, but the app warns when skipping may reduce output quality. The top navigation uses **Back**, **Skip & Continue**, and **Complete & Continue** so there is no redundant generic Next action. The goal is workflow clarity: the user should always know what to do next.
+
+## App settings persistence
+
+The app now saves non-secret preferences locally under:
+
+```text
+data/settings.json
+```
+
+Saved settings include:
+
+```text
+- AI provider
+- OpenAI model name, but not the API key
+- Ollama base URL
+- Ollama model
+- Timeout seconds
+- Generation mode
+- Default document template
+- Default PDF template
+- Default PDF page size
+- Last workspace folder
+- Last export folder
+```
+
+The app saves settings on close and also has **Save App Settings** and **Reset App Settings** buttons in the Settings step. OpenAI session API keys are deliberately not saved.
 
 ## Local AI setup
 
@@ -165,7 +220,7 @@ Timeout: 240
 ## Testing checklist
 
 1. Create a new application workspace.
-2. Import an existing PDF CV or covering letter into the Existing CV / Covering Letter tab.
+2. Import an existing PDF CV or covering letter in the Profile step.
 3. Import or paste a job description.
 4. Add structured evidence blocks for your strongest relevant proof.
 5. Run Job Fit Analyzer.
@@ -181,6 +236,7 @@ Timeout: 240
 15. Confirm structured evidence, job fit analysis, imported text, generated output, and quality report restore correctly.
 16. Click Export Application Package only after manual verification.
 17. Confirm the export folder contains the CV PDF, covering letter PDF, quality report, and summary JSON.
+18. Close and reopen the app, then confirm your AI provider, Ollama model, timeout, PDF template, and page size are remembered.
 
 ## Git workflow
 
@@ -189,11 +245,23 @@ Use GitHub Desktop. Keep each major feature on its own branch until tested.
 Recommended branch:
 
 ```text
-feature/job-fit-analyzer
+feature/sidebar-workflow-gui
 ```
 
 Recommended commit for this update:
 
 ```text
-Add Ollama job fit analyzer
+Replace tabs with sidebar workflow
 ```
+
+
+## Sidebar prompt preview fix
+
+Prompt preview now opens in a dedicated preview window instead of writing to the old Output tab area. This prevents prompt previews from overwriting generated CV or covering letter content and matches the sidebar workflow.
+
+## Step 20 navigation cleanup
+
+- Removed the redundant **Next** button from the sidebar workflow header.
+- Renamed **Skip This Step** to **Skip & Continue**.
+- Renamed **Mark Step Complete** to **Complete & Continue**.
+- Completing a step now moves directly to the next step.
