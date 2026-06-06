@@ -55,6 +55,22 @@ from .qt_theme import DARK_BLUE_QSS, theme_qss
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
+OLLAMA_MODEL_OPTIONS = [
+    "qwen3:8b",
+    "qwen3:14b",
+    "qwen2.5:7b",
+    "llama3.1:8b",
+    "gemma3:12b",
+]
+
+OPENAI_MODEL_OPTIONS = [
+    "gpt-4.1-mini",
+    "gpt-4.1",
+    "gpt-4o-mini",
+    "gpt-4o",
+]
+
+
 class QMessageBox:
     """Silent replacement for QMessageBox convenience dialogs.
 
@@ -1167,8 +1183,20 @@ class ResuBuilderQtApp(QMainWindow):
         self.settings_generation_mode_combo.setCurrentText(getattr(self.app_settings, "generation_mode", "Balanced"))
 
         self.settings_ollama_url_edit = QLineEdit(getattr(self.app_settings, "ollama_base_url", "http://localhost:11434"))
-        self.settings_ollama_model_edit = QLineEdit(getattr(self.app_settings, "ollama_model", "qwen3:14b"))
-        self.settings_openai_model_edit = QLineEdit(getattr(self.app_settings, "openai_model", "gpt-4.1-mini"))
+
+        self.settings_ollama_model_combo = QComboBox()
+        self.settings_ollama_model_combo.addItems(OLLAMA_MODEL_OPTIONS)
+        current_ollama_model = str(getattr(self.app_settings, "ollama_model", "qwen3:14b") or "qwen3:14b")
+        if current_ollama_model not in OLLAMA_MODEL_OPTIONS:
+            self.settings_ollama_model_combo.addItem(current_ollama_model)
+        self.settings_ollama_model_combo.setCurrentText(current_ollama_model)
+
+        self.settings_openai_model_combo = QComboBox()
+        self.settings_openai_model_combo.addItems(OPENAI_MODEL_OPTIONS)
+        current_openai_model = str(getattr(self.app_settings, "openai_model", "gpt-4.1-mini") or "gpt-4.1-mini")
+        if current_openai_model not in OPENAI_MODEL_OPTIONS:
+            self.settings_openai_model_combo.addItem(current_openai_model)
+        self.settings_openai_model_combo.setCurrentText(current_openai_model)
 
         self.settings_timeout_spin = QSpinBox()
         self.settings_timeout_spin.setRange(30, 600)
@@ -1180,8 +1208,8 @@ class ResuBuilderQtApp(QMainWindow):
             self.settings_provider_combo,
             self.settings_generation_mode_combo,
             self.settings_ollama_url_edit,
-            self.settings_ollama_model_edit,
-            self.settings_openai_model_edit,
+            self.settings_ollama_model_combo,
+            self.settings_openai_model_combo,
             self.settings_timeout_spin,
         ):
             self._prepare_form_control(widget, min_width=360)
@@ -1189,8 +1217,8 @@ class ResuBuilderQtApp(QMainWindow):
         self._add_labeled_field(ai_grid, 0, 0, "AI provider", self.settings_provider_combo)
         self._add_labeled_field(ai_grid, 0, 1, "Generation mode", self.settings_generation_mode_combo)
         self._add_labeled_field(ai_grid, 1, 0, "Ollama base URL", self.settings_ollama_url_edit)
-        self._add_labeled_field(ai_grid, 1, 1, "Ollama model", self.settings_ollama_model_edit)
-        self._add_labeled_field(ai_grid, 2, 0, "OpenAI model", self.settings_openai_model_edit)
+        self._add_labeled_field(ai_grid, 1, 1, "Ollama model", self.settings_ollama_model_combo)
+        self._add_labeled_field(ai_grid, 2, 0, "OpenAI model", self.settings_openai_model_combo)
         self._add_labeled_field(ai_grid, 2, 1, "AI timeout", self.settings_timeout_spin)
         ai_card.layout.addLayout(ai_grid)
         content_layout.addWidget(ai_card)
@@ -2555,10 +2583,10 @@ class ResuBuilderQtApp(QMainWindow):
             self.app_settings.generation_mode = self.settings_generation_mode_combo.currentText()
         if hasattr(self, "settings_ollama_url_edit"):
             self.app_settings.ollama_base_url = self.settings_ollama_url_edit.text().strip() or "http://localhost:11434"
-        if hasattr(self, "settings_ollama_model_edit"):
-            self.app_settings.ollama_model = self.settings_ollama_model_edit.text().strip() or "qwen3:14b"
-        if hasattr(self, "settings_openai_model_edit"):
-            self.app_settings.openai_model = self.settings_openai_model_edit.text().strip() or "gpt-4.1-mini"
+        if hasattr(self, "settings_ollama_model_combo"):
+            self.app_settings.ollama_model = self.settings_ollama_model_combo.currentText().strip() or "qwen3:14b"
+        if hasattr(self, "settings_openai_model_combo"):
+            self.app_settings.openai_model = self.settings_openai_model_combo.currentText().strip() or "gpt-4.1-mini"
         if hasattr(self, "settings_timeout_spin"):
             self.app_settings.timeout_seconds = int(self.settings_timeout_spin.value())
         if hasattr(self, "settings_template_combo"):
@@ -2600,8 +2628,8 @@ class ResuBuilderQtApp(QMainWindow):
             self.settings_provider_combo.setCurrentText(getattr(self.app_settings, "ai_provider", "Ollama Local"))
             self.settings_generation_mode_combo.setCurrentText(getattr(self.app_settings, "generation_mode", "Balanced"))
             self.settings_ollama_url_edit.setText(getattr(self.app_settings, "ollama_base_url", "http://localhost:11434"))
-            self.settings_ollama_model_edit.setText(getattr(self.app_settings, "ollama_model", "qwen3:14b"))
-            self.settings_openai_model_edit.setText(getattr(self.app_settings, "openai_model", "gpt-4.1-mini"))
+            self.settings_ollama_model_combo.setCurrentText(getattr(self.app_settings, "ollama_model", "qwen3:14b"))
+            self.settings_openai_model_combo.setCurrentText(getattr(self.app_settings, "openai_model", "gpt-4.1-mini"))
             self.settings_timeout_spin.setValue(int(getattr(self.app_settings, "timeout_seconds", 120)))
             self.settings_template_combo.setCurrentText(getattr(self.app_settings, "template_name", "ATS Friendly"))
             self.settings_pdf_template_combo.setCurrentText(getattr(self.app_settings, "pdf_template", "ATS Friendly"))

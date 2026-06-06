@@ -1,5 +1,23 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+
+_ASSET_DIR = Path(__file__).resolve().parent / "assets"
+
+
+def _asset_url(filename: str) -> str:
+    return (_ASSET_DIR / filename).as_posix()
+
+
+def _with_asset_urls(qss: str) -> str:
+    return (
+        qss.replace("__CHEVRON_LIGHT__", _asset_url("chevron_down_light.svg"))
+        .replace("__CHEVRON_BLUE__", _asset_url("chevron_down_blue.svg"))
+        .replace("__CHEVRON_UP_LIGHT__", _asset_url("chevron_up_light.svg"))
+        .replace("__CHEVRON_UP_BLUE__", _asset_url("chevron_up_blue.svg"))
+    )
+
 
 DARK_BLUE_QSS = """
 QMainWindow {
@@ -74,9 +92,59 @@ QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox {
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QSpinBox:focus {
     border: 1px solid #38bdf8;
 }
+QComboBox {
+    padding-right: 52px;
+}
 QComboBox::drop-down {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
     border: none;
-    padding-right: 8px;
+    width: 44px;
+    border-top-right-radius: 12px;
+    border-bottom-right-radius: 12px;
+    background: rgba(56, 189, 248, 0.05);
+}
+QComboBox::drop-down:hover {
+    background: rgba(56, 189, 248, 0.12);
+}
+QComboBox::down-arrow {
+    image: url("__CHEVRON_LIGHT__");
+    width: 20px;
+    height: 20px;
+    margin: 0px;
+}
+QSpinBox {
+    padding-right: 52px;
+}
+QSpinBox::up-button, QSpinBox::down-button {
+    subcontrol-origin: border;
+    width: 44px;
+    border: none;
+    background: rgba(56, 189, 248, 0.05);
+    margin: 0px;
+}
+QSpinBox::up-button {
+    subcontrol-position: top right;
+    border-top-right-radius: 12px;
+}
+QSpinBox::down-button {
+    subcontrol-position: bottom right;
+    border-bottom-right-radius: 12px;
+}
+QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+    background: rgba(56, 189, 248, 0.12);
+}
+QSpinBox::up-arrow {
+    image: url("__CHEVRON_UP_LIGHT__");
+    width: 16px;
+    height: 16px;
+    margin: 0px;
+}
+QSpinBox::down-arrow {
+    image: url("__CHEVRON_LIGHT__");
+    width: 16px;
+    height: 16px;
+    margin: 0px;
 }
 QComboBox QAbstractItemView {
     background: #0b1424;
@@ -254,7 +322,17 @@ QWidget { color: #172033; font-family: "Segoe UI", "Inter", "Arial"; font-size: 
 #MetricNumber { color: #0f172a; font-size: 36px; font-weight: 900; }
 QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox { background: #ffffff; color: #172033; border: 1px solid rgba(15, 23, 42, 0.18); border-radius: 12px; padding: 9px 11px; selection-background-color: #2563eb; }
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QSpinBox:focus { border: 1px solid #2563eb; }
-QComboBox::drop-down { border: none; padding-right: 8px; }
+QComboBox { padding-right: 52px; }
+QComboBox::drop-down { subcontrol-origin: border; subcontrol-position: top right; border: none; width: 44px; border-top-right-radius: 12px; border-bottom-right-radius: 12px; background: rgba(37, 99, 235, 0.06); }
+QComboBox::drop-down:hover { background: rgba(37, 99, 235, 0.12); }
+QComboBox::down-arrow { image: url("__CHEVRON_BLUE__"); width: 20px; height: 20px; margin: 0px; }
+QSpinBox { padding-right: 52px; }
+QSpinBox::up-button, QSpinBox::down-button { subcontrol-origin: border; width: 44px; border: none; background: rgba(37, 99, 235, 0.06); margin: 0px; }
+QSpinBox::up-button { subcontrol-position: top right; border-top-right-radius: 12px; }
+QSpinBox::down-button { subcontrol-position: bottom right; border-bottom-right-radius: 12px; }
+QSpinBox::up-button:hover, QSpinBox::down-button:hover { background: rgba(37, 99, 235, 0.12); }
+QSpinBox::up-arrow { image: url("__CHEVRON_UP_BLUE__"); width: 16px; height: 16px; margin: 0px; }
+QSpinBox::down-arrow { image: url("__CHEVRON_BLUE__"); width: 16px; height: 16px; margin: 0px; }
 QComboBox QAbstractItemView { background: #ffffff; color: #172033; selection-background-color: #dbeafe; border: 1px solid rgba(15, 23, 42, 0.18); }
 QListWidget { background: #ffffff; color: #172033; border: 1px solid rgba(15, 23, 42, 0.16); border-radius: 14px; padding: 8px; }
 QListWidget::item { padding: 10px 12px; border-radius: 10px; margin: 3px; }
@@ -288,7 +366,7 @@ def theme_qss(theme_name: str) -> str:
     if theme == "Soft Blue":
         theme = "Dark blue"
     if theme == "Light":
-        return LIGHT_QSS
+        return _with_asset_urls(LIGHT_QSS)
     if theme == "Dark":
-        return DARK_QSS
-    return DARK_BLUE_QSS
+        return _with_asset_urls(DARK_QSS)
+    return _with_asset_urls(DARK_BLUE_QSS)

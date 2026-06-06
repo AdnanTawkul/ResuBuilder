@@ -76,3 +76,22 @@ The Qt experiment now uses custom silent confirmation and information dialogs in
 - Added workspace/export folder defaults.
 - Added Light, Dark, and Dark blue Qt theme switching.
 - Settings persist through `data/settings.json`.
+
+## Step 24Q - Qt Settings model dropdown cleanup
+
+- Replaced free-text model fields with dropdowns for Ollama and OpenAI.
+- Preserves saved custom model values as dropdown choices.
+- Improved timeout spinner arrow styling and spacing.
+
+## Step 24R. Qt dropdown arrow visibility fix
+
+- Replaced CSS triangle combo-box arrows with SVG chevron assets.
+- Made dropdown hit areas wider and easier to see in Light, Dark, and Dark blue themes.
+- Kept the timeout spinner styling from the previous settings cleanup.
+
+
+### Step 24S, Qt dropdown and spinner arrow polish
+
+- Centered dropdown chevron indicators.
+- Replaced AI timeout spinner triangles with matching SVG chevrons.
+- Added reusable up-chevron SVG assets for light and dark themes.
