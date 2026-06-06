@@ -41,6 +41,12 @@ from .quality_checker import analyze_document, format_quality_report
 from .settings_manager import AppSettings, load_app_settings, save_app_settings
 from .storage import load_json, save_json
 from .templates import get_template_names
+from .workspace_manager import (
+    ensure_applications_dir,
+    load_application_snapshot,
+    save_application_snapshot,
+    suggested_application_filename,
+)
 from .qt_theme import DARK_BLUE_QSS
 
 
@@ -102,6 +108,7 @@ class ResuBuilderQtApp(QMainWindow):
         self.app_settings: AppSettings = load_app_settings()
         self.generated_cv = ""
         self.generated_covering_letter = ""
+        self.current_workspace_path: Path | None = None
         self._generation_running = False
         self._generation_job_id = 0
         self.generation_signals = GenerationSignals()
@@ -120,12 +127,25 @@ class ResuBuilderQtApp(QMainWindow):
         menu_bar = self.menuBar()
 
         file_menu = menu_bar.addMenu("File")
+        new_workspace_action = QAction("New Application Workspace", self)
+        new_workspace_action.triggered.connect(self._new_workspace)
+        open_workspace_action = QAction("Load Application Workspace...", self)
+        open_workspace_action.triggered.connect(self._load_workspace)
+        save_workspace_action = QAction("Save Application Workspace", self)
+        save_workspace_action.triggered.connect(self._save_workspace)
+        save_as_workspace_action = QAction("Save Application Workspace As...", self)
+        save_as_workspace_action.triggered.connect(self._save_workspace_as)
         quit_action = QAction("Exit", self)
         quit_action.triggered.connect(self.close)
+        file_menu.addAction(new_workspace_action)
+        file_menu.addAction(open_workspace_action)
+        file_menu.addAction(save_workspace_action)
+        file_menu.addAction(save_as_workspace_action)
+        file_menu.addSeparator()
         file_menu.addAction(quit_action)
 
         workflow_menu = menu_bar.addMenu("Workflow")
-        for page_name in ["Welcome", "Profile", "Generate", "Review", "Export", "Settings"]:
+        for page_name in ["Welcome", "Workspace", "Profile", "Generate", "Review", "Export", "Settings"]:
             action = QAction(page_name, self)
             action.triggered.connect(lambda checked=False, name=page_name: self.show_page(name))
             workflow_menu.addAction(action)
@@ -157,7 +177,7 @@ class ResuBuilderQtApp(QMainWindow):
         sidebar_layout.addWidget(subtitle)
         sidebar_layout.addSpacing(20)
 
-        for page_name in ["Welcome", "Profile", "Generate", "Review", "Export", "Settings"]:
+        for page_name in ["Welcome", "Workspace", "Profile", "Generate", "Review", "Export", "Settings"]:
             button = QPushButton(page_name)
             button.setObjectName("NavButton")
             button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -176,6 +196,7 @@ class ResuBuilderQtApp(QMainWindow):
         self.stack.setContentsMargins(0, 0, 0, 0)
 
         self.pages["Welcome"] = self._build_welcome_page()
+        self.pages["Workspace"] = self._build_workspace_page()
         self.pages["Profile"] = self._build_profile_page()
         self.pages["Generate"] = self._build_generate_page()
         self.pages["Review"] = self._build_review_page()
@@ -250,6 +271,81 @@ class ResuBuilderQtApp(QMainWindow):
         card_row.addWidget(Card("3. Prove the UI", "Only after the prototype works do we wire review, export, and workspace logic."), 0, 2)
         layout.addLayout(card_row)
         layout.addStretch(1)
+        return page
+
+    def _build_workspace_page(self) -> QWidget:
+        page, layout = self._page_container(
+            "Workspace",
+            "Save and reload a complete job application session so testing does not depend on retyping everything.",
+        )
+
+        card = Card("Application workspace", "Keep one workspace per target company and role. Workspaces are local JSON files and should stay out of GitHub.")
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(18)
+        grid.setVerticalSpacing(14)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+
+        self.workspace_name_edit = QLineEdit()
+        self.workspace_name_edit.setPlaceholderText("Example: Audatic Deep Learning Engineer")
+        self.workspace_company_edit = QLineEdit()
+        self.workspace_company_edit.setPlaceholderText("Example: Audatic")
+        self.workspace_role_edit = QLineEdit()
+        self.workspace_role_edit.setPlaceholderText("Example: Deep Learning Engineer")
+        self.workspace_path_edit = QLineEdit()
+        self.workspace_path_edit.setReadOnly(True)
+        self.workspace_path_edit.setPlaceholderText("No workspace file saved yet")
+
+        for widget in (
+            self.workspace_name_edit,
+            self.workspace_company_edit,
+            self.workspace_role_edit,
+            self.workspace_path_edit,
+        ):
+            self._prepare_form_control(widget, min_width=420)
+
+        self._add_labeled_field(grid, 0, 0, "Application name", self.workspace_name_edit)
+        self._add_labeled_field(grid, 0, 1, "Target company", self.workspace_company_edit)
+        self._add_labeled_field(grid, 1, 0, "Target role", self.workspace_role_edit)
+        self._add_labeled_field(grid, 1, 1, "Workspace file", self.workspace_path_edit)
+        card.layout.addLayout(grid)
+
+        actions = QHBoxLayout()
+        actions.setSpacing(12)
+        new_button = QPushButton("New Workspace")
+        new_button.clicked.connect(self._new_workspace)
+        save_button = QPushButton("Save Workspace")
+        save_button.setObjectName("PrimaryButton")
+        save_button.clicked.connect(self._save_workspace)
+        save_as_button = QPushButton("Save As")
+        save_as_button.clicked.connect(self._save_workspace_as)
+        load_button = QPushButton("Load Workspace")
+        load_button.clicked.connect(self._load_workspace)
+        continue_button = QPushButton("Continue to Profile")
+        continue_button.clicked.connect(lambda: self.show_page("Profile"))
+        for button in (new_button, save_button, save_as_button, load_button, continue_button):
+            button.setMinimumHeight(46)
+            actions.addWidget(button)
+        actions.addStretch(1)
+        card.layout.addLayout(actions)
+        layout.addWidget(card)
+
+        summary_card = QFrame()
+        summary_card.setObjectName("OutputCard")
+        summary_layout = QVBoxLayout(summary_card)
+        summary_layout.setContentsMargins(22, 20, 22, 20)
+        summary_layout.setSpacing(12)
+        title = QLabel("Workspace status")
+        title.setObjectName("CardTitle")
+        self.workspace_status_edit = QPlainTextEdit()
+        self.workspace_status_edit.setReadOnly(True)
+        self.workspace_status_edit.setMinimumHeight(260)
+        self.workspace_status_edit.setPlainText(
+            "No workspace loaded. Create or load an application workspace before long testing sessions."
+        )
+        summary_layout.addWidget(title)
+        summary_layout.addWidget(self.workspace_status_edit, 1)
+        layout.addWidget(summary_card, 1)
         return page
 
     def _build_profile_page(self) -> QWidget:
@@ -688,6 +784,203 @@ class ResuBuilderQtApp(QMainWindow):
             button.style().polish(button)
             button.update()
 
+    def _workspace_metadata(self) -> dict[str, str]:
+        company = self.workspace_company_edit.text().strip() if hasattr(self, "workspace_company_edit") else ""
+        role = self.workspace_role_edit.text().strip() if hasattr(self, "workspace_role_edit") else ""
+        name = self.workspace_name_edit.text().strip() if hasattr(self, "workspace_name_edit") else ""
+        if not name:
+            name = f"{company} {role}".strip() or "Untitled application"
+        return {
+            "application_name": name,
+            "target_company": company,
+            "target_role": role,
+            "modified_at": datetime.now().isoformat(timespec="seconds"),
+        }
+
+    def _current_workspace_snapshot(self) -> dict:
+        metadata = self._workspace_metadata()
+        template_name = self.template_combo.currentText() if hasattr(self, "template_combo") else getattr(self.app_settings, "template_name", "ATS Friendly")
+        pdf_template = self.export_pdf_template_combo.currentText() if hasattr(self, "export_pdf_template_combo") else getattr(self.app_settings, "pdf_template", "ATS Friendly")
+        pdf_page_size = self.export_page_size_combo.currentText() if hasattr(self, "export_page_size_combo") else getattr(self.app_settings, "pdf_page_size", "A4")
+        export_dir = self.export_dir_edit.text().strip() if hasattr(self, "export_dir_edit") else getattr(self.app_settings, "last_export_dir", "exports")
+        return {
+            "source": "PySide6 experiment",
+            "metadata": metadata,
+            "profile": self._profile_to_dict(),
+            "job_description": self.job_description_edit.toPlainText().strip() if hasattr(self, "job_description_edit") else "",
+            "generated_cv": self.generated_cv,
+            "generated_covering_letter": self.generated_covering_letter,
+            "quality_report": self._quality_report_text(),
+            "ui_state": {
+                "document_type": self.document_type_combo.currentText() if hasattr(self, "document_type_combo") else "CV",
+                "template_name": template_name,
+                "review_document": self.review_document_combo.currentText() if hasattr(self, "review_document_combo") else "CV",
+                "export_document": self.export_document_combo.currentText() if hasattr(self, "export_document_combo") else "CV",
+            },
+            "settings": {
+                "provider": self.app_settings.ai_provider,
+                "ollama_model": self.app_settings.ollama_model,
+                "openai_model": self.app_settings.openai_model,
+                "generation_mode": self.app_settings.generation_mode,
+                "pdf_template": pdf_template,
+                "pdf_page_size": pdf_page_size,
+                "export_dir": export_dir,
+            },
+        }
+
+    def _update_workspace_status(self, message: str) -> None:
+        if not hasattr(self, "workspace_status_edit"):
+            return
+        path_text = str(self.current_workspace_path) if self.current_workspace_path else "Not saved yet"
+        metadata = self._workspace_metadata() if hasattr(self, "workspace_name_edit") else {}
+        self.workspace_status_edit.setPlainText(
+            f"{message}\n\n"
+            f"Application: {metadata.get('application_name', '')}\n"
+            f"Company: {metadata.get('target_company', '')}\n"
+            f"Role: {metadata.get('target_role', '')}\n"
+            f"Workspace file: {path_text}\n\n"
+            f"CV generated: {'yes' if self.generated_cv.strip() else 'no'}\n"
+            f"Covering letter generated: {'yes' if self.generated_covering_letter.strip() else 'no'}\n"
+            f"Quality report: {'yes' if self._quality_report_text() != 'No quality report exported from the Qt experiment.' else 'no'}"
+        )
+
+    def _suggest_workspace_path(self) -> Path:
+        metadata = self._workspace_metadata()
+        filename = suggested_application_filename(metadata.get("target_company", ""), metadata.get("target_role", ""))
+        return ensure_applications_dir() / filename
+
+    def _new_workspace(self) -> None:
+        answer = QMessageBox.question(
+            self,
+            "New workspace",
+            "Create a new application workspace? This clears job description, generated documents, and review output. Profile fields are kept so you do not need to retype your identity.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.current_workspace_path = None
+        self.workspace_name_edit.clear()
+        self.workspace_company_edit.clear()
+        self.workspace_role_edit.clear()
+        self.workspace_path_edit.clear()
+        if hasattr(self, "job_description_edit"):
+            self.job_description_edit.clear()
+        self.generated_cv = ""
+        self.generated_covering_letter = ""
+        if hasattr(self, "output_edit"):
+            self.output_edit.clear()
+        if hasattr(self, "quality_report_edit"):
+            self.quality_report_edit.setPlainText("No report yet.")
+        if hasattr(self, "review_score_label"):
+            self.review_score_label.setText("No quality check run yet")
+        if hasattr(self, "review_status_label"):
+            self.review_status_label.setText("Generate a CV or covering letter first, then run the checker.")
+        self._update_workspace_status("New workspace started. Add target company and role, then save when ready.")
+        self.show_page("Workspace")
+
+    def _save_workspace(self) -> None:
+        if self.current_workspace_path is None:
+            self._save_workspace_as()
+            return
+        self._write_workspace_to_path(self.current_workspace_path)
+
+    def _save_workspace_as(self) -> None:
+        default_path = self._suggest_workspace_path()
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save application workspace",
+            str(default_path),
+            "Application workspace (*.json);;JSON files (*.json)",
+        )
+        if not file_path:
+            return
+        self._write_workspace_to_path(Path(file_path))
+
+    def _write_workspace_to_path(self, path: Path) -> None:
+        try:
+            saved_path = save_application_snapshot(path, self._current_workspace_snapshot())
+        except Exception as exc:  # noqa: BLE001
+            self._write_qt_log("Workspace save failed:\n" + traceback.format_exc())
+            QMessageBox.critical(self, "Workspace save failed", str(exc))
+            return
+        self.current_workspace_path = saved_path
+        self.workspace_path_edit.setText(str(saved_path))
+        self._sync_export_metadata_from_workspace(force_empty_only=True)
+        self._update_workspace_status("Workspace saved successfully.")
+        QMessageBox.information(self, "Workspace saved", f"Application workspace saved to:\n{saved_path}")
+
+    def _load_workspace(self) -> None:
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load application workspace",
+            str(ensure_applications_dir()),
+            "Application workspace (*.json);;JSON files (*.json);;All files (*.*)",
+        )
+        if not file_path:
+            return
+        try:
+            snapshot = load_application_snapshot(file_path)
+            self._apply_workspace_snapshot(snapshot)
+        except Exception as exc:  # noqa: BLE001
+            self._write_qt_log("Workspace load failed:\n" + traceback.format_exc())
+            QMessageBox.critical(self, "Workspace load failed", str(exc))
+            return
+        self.current_workspace_path = Path(file_path)
+        self.workspace_path_edit.setText(str(self.current_workspace_path))
+        self._update_workspace_status("Workspace loaded successfully.")
+        self.show_page("Workspace")
+        QMessageBox.information(self, "Workspace loaded", "Application workspace loaded into the Qt experiment.")
+
+    def _apply_workspace_snapshot(self, snapshot: dict) -> None:
+        metadata = snapshot.get("metadata") or {}
+        if not metadata:
+            metadata = {
+                "application_name": snapshot.get("application_name", ""),
+                "target_company": snapshot.get("target_company", ""),
+                "target_role": snapshot.get("target_role", ""),
+            }
+        self.workspace_name_edit.setText(str(metadata.get("application_name", "") or ""))
+        self.workspace_company_edit.setText(str(metadata.get("target_company", "") or ""))
+        self.workspace_role_edit.setText(str(metadata.get("target_role", "") or ""))
+        self._apply_profile_data(snapshot.get("profile") or {})
+        self.job_description_edit.setPlainText(str(snapshot.get("job_description", "") or ""))
+        self.generated_cv = str(snapshot.get("generated_cv", "") or "")
+        self.generated_covering_letter = str(snapshot.get("generated_covering_letter", "") or "")
+        if self.generated_cv:
+            self.document_type_combo.setCurrentText("CV")
+            self.output_edit.setPlainText(self.generated_cv)
+        elif self.generated_covering_letter:
+            self.document_type_combo.setCurrentText("Covering Letter")
+            self.output_edit.setPlainText(self.generated_covering_letter)
+        else:
+            self.output_edit.clear()
+        quality_report = str(snapshot.get("quality_report", "") or "")
+        self.quality_report_edit.setPlainText(quality_report or "No report yet.")
+        ui_state = snapshot.get("ui_state") or {}
+        if ui_state.get("template_name"):
+            self.template_combo.setCurrentText(str(ui_state.get("template_name")))
+        if ui_state.get("review_document"):
+            self.review_document_combo.setCurrentText(str(ui_state.get("review_document")))
+        if ui_state.get("export_document"):
+            self.export_document_combo.setCurrentText(str(ui_state.get("export_document")))
+        settings = snapshot.get("settings") or {}
+        if settings.get("pdf_template"):
+            self.export_pdf_template_combo.setCurrentText(str(settings.get("pdf_template")))
+        if settings.get("pdf_page_size"):
+            self.export_page_size_combo.setCurrentText(str(settings.get("pdf_page_size")))
+        if settings.get("export_dir"):
+            self.export_dir_edit.setText(str(settings.get("export_dir")))
+        self._sync_export_metadata_from_workspace(force_empty_only=False)
+
+    def _sync_export_metadata_from_workspace(self, force_empty_only: bool = True) -> None:
+        company = self.workspace_company_edit.text().strip() if hasattr(self, "workspace_company_edit") else ""
+        role = self.workspace_role_edit.text().strip() if hasattr(self, "workspace_role_edit") else ""
+        if hasattr(self, "export_company_edit") and company and (not force_empty_only or not self.export_company_edit.text().strip()):
+            self.export_company_edit.setText(company)
+        if hasattr(self, "export_role_edit") and role and (not force_empty_only or not self.export_role_edit.text().strip()):
+            self.export_role_edit.setText(role)
+
     def _build_profile(self) -> CandidateProfile:
         return CandidateProfile(
             name=self.name_edit.text().strip(),
@@ -873,6 +1166,7 @@ class ResuBuilderQtApp(QMainWindow):
             self.generated_covering_letter = text
         self.output_edit.setPlainText(text)
         self.status_label.setText(f"{document_type} generated. Verify every claim, then run Review > Quality Check.")
+        self._update_workspace_status(f"{document_type} generated. Save the workspace to preserve this output.")
 
     def _generation_failed(self, job_id: int, error: str) -> None:
         if job_id != self._generation_job_id:
@@ -1051,10 +1345,11 @@ class ResuBuilderQtApp(QMainWindow):
             return
         template, page_size = self._export_settings()
         export_root = self._export_root()
+        workspace_metadata = self._workspace_metadata() if hasattr(self, "workspace_name_edit") else {}
         metadata = {
-            "application_name": f"{self.export_company_edit.text().strip()} {self.export_role_edit.text().strip()}".strip(),
-            "target_company": self.export_company_edit.text().strip() or "company",
-            "target_role": self.export_role_edit.text().strip() or "role",
+            "application_name": workspace_metadata.get("application_name") or f"{self.export_company_edit.text().strip()} {self.export_role_edit.text().strip()}".strip(),
+            "target_company": self.export_company_edit.text().strip() or workspace_metadata.get("target_company") or "company",
+            "target_role": self.export_role_edit.text().strip() or workspace_metadata.get("target_role") or "role",
             "created_at": "",
             "modified_at": datetime.now().isoformat(timespec="seconds"),
         }

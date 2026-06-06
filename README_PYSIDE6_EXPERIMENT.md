@@ -9,11 +9,14 @@ Working in the Qt prototype:
 - Modern dark-blue Qt shell
 - Sidebar navigation
 - Welcome page
+- Workspace page
 - Profile page
 - Email validation before generation
 - Telephone number-only validation
 - Save/load local profile from `data/candidate_profile.json`
 - Import/export profile JSON for faster testing
+- Save/load complete application workspace JSON files
+- File menu actions for workspace new/load/save/save-as
 - Generate CV
 - Generate covering letter
 - Background generation worker with crash logging
@@ -27,7 +30,6 @@ Working in the Qt prototype:
 
 Still placeholder or partial:
 
-- Workspace save/load
 - Structured Evidence Builder
 - Job Fit Analyzer
 - AI Quality Review
@@ -96,3 +98,12 @@ Do not merge this branch into `main` until the Qt interface reaches feature pari
 - Rebuilt generation controls into a grid so the document selector, template selector, and button are not clipped at the default window size.
 - Increased Job Description and Generated Output field height.
 - Kept generation logic unchanged. This is a layout-only fix.
+
+
+## Step 24I, Qt workspace save/load
+
+- Added a Workspace page to the Qt sidebar.
+- Added File menu actions for New, Load, Save, and Save As application workspace.
+- Saves profile, job description, generated CV, generated covering letter, quality report, export settings, and workspace metadata.
+- Loads workspace JSON files back into the Qt experiment without retyping the profile.
+- Keeps old Tk/CustomTkinter app untouched.
