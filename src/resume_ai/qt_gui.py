@@ -284,7 +284,7 @@ class ResuBuilderQtApp(QMainWindow):
         file_menu.addAction(quit_action)
 
         workflow_menu = menu_bar.addMenu("Workflow")
-        for page_name in ["Welcome", "Workspace", "Profile", "Evidence", "Generate", "Review", "Export", "Settings"]:
+        for page_name in ["Welcome", "Workspace", "Profile", "Evidence", "Job", "Generate", "Review", "Export", "Settings"]:
             action = QAction(page_name, self)
             action.triggered.connect(lambda checked=False, name=page_name: self.show_page(name))
             workflow_menu.addAction(action)
@@ -316,7 +316,7 @@ class ResuBuilderQtApp(QMainWindow):
         sidebar_layout.addWidget(subtitle)
         sidebar_layout.addSpacing(20)
 
-        for page_name in ["Welcome", "Workspace", "Profile", "Evidence", "Generate", "Review", "Export", "Settings"]:
+        for page_name in ["Welcome", "Workspace", "Profile", "Evidence", "Job", "Generate", "Review", "Export", "Settings"]:
             button = QPushButton(page_name)
             button.setObjectName("NavButton")
             button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -338,6 +338,7 @@ class ResuBuilderQtApp(QMainWindow):
         self.pages["Workspace"] = self._build_workspace_page()
         self.pages["Profile"] = self._build_profile_page()
         self.pages["Evidence"] = self._build_evidence_page()
+        self.pages["Job"] = self._build_job_page()
         self.pages["Generate"] = self._build_generate_page()
         self.pages["Review"] = self._build_review_page()
         self.pages["Export"] = self._build_export_page()
@@ -408,7 +409,8 @@ class ResuBuilderQtApp(QMainWindow):
         card_row.setSpacing(18)
         card_row.addWidget(Card("1. Profile", "Validate contact information and capture the candidate story."), 0, 0)
         card_row.addWidget(Card("2. Evidence", "Structure projects, tools, methods, and outcomes before generation."), 0, 1)
-        card_row.addWidget(Card("3. Generate", "Use Ollama or OpenAI through the existing AI service layer."), 0, 2)
+        card_row.addWidget(Card("3. Job", "Break the job post into company, role, responsibilities, and requirements."), 0, 2)
+        card_row.addWidget(Card("4. Generate", "Use Ollama or OpenAI through the existing AI service layer."), 1, 0)
         layout.addLayout(card_row)
         layout.addStretch(1)
         return page
@@ -419,7 +421,7 @@ class ResuBuilderQtApp(QMainWindow):
             "Save and reload a complete job application session so testing does not depend on retyping everything.",
         )
 
-        card = Card("Application workspace", "Keep one workspace per target company and role. Workspaces are local JSON files and should stay out of GitHub.")
+        card = Card("Application workspace", "Keep one workspace per application. Job company and role now live in the Job page, not Export.")
         grid = QGridLayout()
         grid.setHorizontalSpacing(18)
         grid.setVerticalSpacing(14)
@@ -428,26 +430,18 @@ class ResuBuilderQtApp(QMainWindow):
 
         self.workspace_name_edit = QLineEdit()
         self.workspace_name_edit.setPlaceholderText("Example: Audatic Deep Learning Engineer")
-        self.workspace_company_edit = QLineEdit()
-        self.workspace_company_edit.setPlaceholderText("Example: Audatic")
-        self.workspace_role_edit = QLineEdit()
-        self.workspace_role_edit.setPlaceholderText("Example: Deep Learning Engineer")
         self.workspace_path_edit = QLineEdit()
         self.workspace_path_edit.setReadOnly(True)
         self.workspace_path_edit.setPlaceholderText("No workspace file saved yet")
 
         for widget in (
             self.workspace_name_edit,
-            self.workspace_company_edit,
-            self.workspace_role_edit,
             self.workspace_path_edit,
         ):
             self._prepare_form_control(widget, min_width=420)
 
         self._add_labeled_field(grid, 0, 0, "Application name", self.workspace_name_edit)
-        self._add_labeled_field(grid, 0, 1, "Target company", self.workspace_company_edit)
-        self._add_labeled_field(grid, 1, 0, "Target role", self.workspace_role_edit)
-        self._add_labeled_field(grid, 1, 1, "Workspace file", self.workspace_path_edit)
+        self._add_labeled_field(grid, 0, 1, "Workspace file", self.workspace_path_edit)
         card.layout.addLayout(grid)
 
         actions = QHBoxLayout()
@@ -699,10 +693,83 @@ class ResuBuilderQtApp(QMainWindow):
         layout.addWidget(scroll, 1)
         return page
 
+    def _build_job_page(self) -> QWidget:
+        page, layout = self._page_container(
+            "Job",
+            "Break the target job into structured sections. This gives the AI cleaner input than one pasted wall of text.",
+        )
+
+        scroll = QScrollArea()
+        scroll.setObjectName("PageScrollArea")
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        content = QWidget()
+        content.setObjectName("ScrollContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 14, 0)
+        content_layout.setSpacing(20)
+
+        identity_card = Card("Job identity", "Use the exact company and role names from the job post. These names are also used for workspace metadata and exported file names.")
+        identity_grid = QGridLayout()
+        identity_grid.setHorizontalSpacing(18)
+        identity_grid.setVerticalSpacing(14)
+        identity_grid.setColumnStretch(0, 1)
+        identity_grid.setColumnStretch(1, 1)
+        self.job_company_edit = QLineEdit()
+        self.job_company_edit.setPlaceholderText("Example: Audatic")
+        self.job_title_edit = QLineEdit()
+        self.job_title_edit.setPlaceholderText("Example: Deep Learning Engineer")
+        self._prepare_form_control(self.job_company_edit, min_width=420)
+        self._prepare_form_control(self.job_title_edit, min_width=420)
+        self._add_labeled_field(identity_grid, 0, 0, "Company", self.job_company_edit)
+        self._add_labeled_field(identity_grid, 0, 1, "Job title", self.job_title_edit)
+        identity_card.layout.addLayout(identity_grid)
+        content_layout.addWidget(identity_card)
+
+        description_card = Card("Full job description", "Paste the complete posting here. Keep the original text so the analyzer can see the full context.")
+        self.job_description_edit = QTextEdit()
+        self.job_description_edit.setMinimumHeight(260)
+        self.job_description_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        description_card.layout.addWidget(self.job_description_edit)
+        content_layout.addWidget(description_card)
+
+        responsibilities_card = Card("Key responsibilities", "Paste the section usually called 'In this role you will', 'Responsibilities', or similar.")
+        self.job_responsibilities_edit = QTextEdit()
+        self.job_responsibilities_edit.setMinimumHeight(190)
+        self.job_responsibilities_edit.setPlaceholderText("Example: Develop models, optimize inference, collaborate with engineers, validate results...")
+        self.job_responsibilities_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        responsibilities_card.layout.addWidget(self.job_responsibilities_edit)
+        content_layout.addWidget(responsibilities_card)
+
+        requirements_card = Card("Required experience and skills", "Paste the must-have skills, technologies, experience level, education, domain knowledge, and preferred qualifications.")
+        self.job_requirements_edit = QTextEdit()
+        self.job_requirements_edit.setMinimumHeight(190)
+        self.job_requirements_edit.setPlaceholderText("Example: Python, PyTorch, audio processing, embedded deployment, research experience...")
+        self.job_requirements_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        requirements_card.layout.addWidget(self.job_requirements_edit)
+        content_layout.addWidget(requirements_card)
+
+        actions = QHBoxLayout()
+        actions.setSpacing(12)
+        analyze_button = QPushButton("Continue to Generate")
+        analyze_button.setObjectName("PrimaryButton")
+        analyze_button.setMinimumHeight(46)
+        analyze_button.clicked.connect(lambda: self.show_page("Generate"))
+        actions.addWidget(analyze_button)
+        actions.addStretch(1)
+        content_layout.addLayout(actions)
+        content_layout.addStretch(1)
+
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
+        return page
+
     def _build_generate_page(self) -> QWidget:
         page, layout = self._page_container(
             "Generate",
-            "Analyze fit, then generate a CV or covering letter through the existing AIService.",
+            "Analyze fit and generate a CV or covering letter using the structured Job page and candidate evidence.",
         )
 
         scroll = QScrollArea()
@@ -770,13 +837,6 @@ class ResuBuilderQtApp(QMainWindow):
         controls_grid.addWidget(self.generate_button, 0, 2, alignment=Qt.AlignmentFlag.AlignBottom)
         controls.layout.addLayout(controls_grid)
         content_layout.addWidget(controls)
-
-        job_card = Card("Job description", "Paste the target job. The stronger this input, the better the output.")
-        self.job_description_edit = QTextEdit()
-        self.job_description_edit.setMinimumHeight(220)
-        self.job_description_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        job_card.layout.addWidget(self.job_description_edit)
-        content_layout.addWidget(job_card)
 
         output_card = QFrame()
         output_card.setObjectName("OutputCard")
@@ -875,18 +935,13 @@ class ResuBuilderQtApp(QMainWindow):
         content_layout.setContentsMargins(0, 0, 14, 0)
         content_layout.setSpacing(20)
 
-        settings_card = Card("Export settings", "Use clear company and role names so generated files are easy to find later.")
-        settings_card.setMinimumHeight(300)
+        settings_card = Card("Export settings", "Company and role are taken from the Job page so export settings stay focused on files and formatting.")
+        settings_card.setMinimumHeight(240)
         settings_grid = QGridLayout()
         settings_grid.setHorizontalSpacing(20)
         settings_grid.setVerticalSpacing(18)
         settings_grid.setColumnStretch(0, 1)
         settings_grid.setColumnStretch(1, 1)
-
-        self.export_company_edit = QLineEdit()
-        self.export_company_edit.setPlaceholderText("Example: Audatic")
-        self.export_role_edit = QLineEdit()
-        self.export_role_edit.setPlaceholderText("Example: Machine Learning Engineer")
 
         self.export_document_combo = QComboBox()
         self.export_document_combo.addItems(["CV", "Covering Letter"])
@@ -904,8 +959,6 @@ class ResuBuilderQtApp(QMainWindow):
             self.export_page_size_combo.setCurrentIndex(page_size_index)
 
         for export_widget in (
-            self.export_company_edit,
-            self.export_role_edit,
             self.export_document_combo,
             self.export_pdf_template_combo,
             self.export_page_size_combo,
@@ -920,11 +973,9 @@ class ResuBuilderQtApp(QMainWindow):
         browse_button.setMinimumWidth(110)
         browse_button.clicked.connect(self._browse_export_dir)
 
-        self._add_labeled_field(settings_grid, 0, 0, "Target company", self.export_company_edit)
-        self._add_labeled_field(settings_grid, 0, 1, "Target role", self.export_role_edit)
-        self._add_labeled_field(settings_grid, 1, 0, "Single-document export", self.export_document_combo)
-        self._add_labeled_field(settings_grid, 1, 1, "PDF template", self.export_pdf_template_combo)
-        self._add_labeled_field(settings_grid, 2, 0, "Page size", self.export_page_size_combo)
+        self._add_labeled_field(settings_grid, 0, 0, "Single-document export", self.export_document_combo)
+        self._add_labeled_field(settings_grid, 0, 1, "PDF template", self.export_pdf_template_combo)
+        self._add_labeled_field(settings_grid, 1, 0, "Page size", self.export_page_size_combo)
 
         export_dir_wrapper = QWidget()
         export_dir_wrapper.setMinimumHeight(82)
@@ -938,7 +989,7 @@ class ResuBuilderQtApp(QMainWindow):
         export_dir_row.addWidget(self.export_dir_edit, 1)
         export_dir_row.addWidget(browse_button)
         export_dir_layout.addLayout(export_dir_row)
-        settings_grid.addWidget(export_dir_wrapper, 2, 1)
+        settings_grid.addWidget(export_dir_wrapper, 1, 1)
 
         settings_card.layout.addLayout(settings_grid)
         content_layout.addWidget(settings_card)
@@ -1065,9 +1116,47 @@ class ResuBuilderQtApp(QMainWindow):
             button.style().polish(button)
             button.update()
 
+    def _job_company(self) -> str:
+        return self.job_company_edit.text().strip() if hasattr(self, "job_company_edit") else ""
+
+    def _job_title(self) -> str:
+        return self.job_title_edit.text().strip() if hasattr(self, "job_title_edit") else ""
+
+    def _job_details_dict(self) -> dict[str, str]:
+        return {
+            "company": self._job_company(),
+            "job_title": self._job_title(),
+            "full_description": self.job_description_edit.toPlainText().strip() if hasattr(self, "job_description_edit") else "",
+            "responsibilities": self.job_responsibilities_edit.toPlainText().strip() if hasattr(self, "job_responsibilities_edit") else "",
+            "requirements": self.job_requirements_edit.toPlainText().strip() if hasattr(self, "job_requirements_edit") else "",
+        }
+
+    def _combined_job_brief(self) -> str:
+        details = self._job_details_dict()
+        sections: list[str] = []
+        if details["company"]:
+            sections.append(f"Target company: {details['company']}")
+        if details["job_title"]:
+            sections.append(f"Target role: {details['job_title']}")
+        if details["full_description"]:
+            sections.append("Full job description:\n" + details["full_description"])
+        if details["responsibilities"]:
+            sections.append("Key responsibilities:\n" + details["responsibilities"])
+        if details["requirements"]:
+            sections.append("Required experience and skills:\n" + details["requirements"])
+        return "\n\n".join(sections).strip()
+
+    def _validate_job_details(self) -> tuple[bool, str]:
+        if not self._job_title():
+            return False, "Enter the job title on the Job page before continuing."
+        details = self._job_details_dict()
+        if not (details["full_description"] or details["responsibilities"] or details["requirements"]):
+            return False, "Add the job description, responsibilities, or required skills before generating."
+        return True, "Job details look usable."
+
     def _workspace_metadata(self) -> dict[str, str]:
-        company = self.workspace_company_edit.text().strip() if hasattr(self, "workspace_company_edit") else ""
-        role = self.workspace_role_edit.text().strip() if hasattr(self, "workspace_role_edit") else ""
+        company = self._job_company()
+        role = self._job_title()
         name = self.workspace_name_edit.text().strip() if hasattr(self, "workspace_name_edit") else ""
         if not name:
             name = f"{company} {role}".strip() or "Untitled application"
@@ -1090,7 +1179,8 @@ class ResuBuilderQtApp(QMainWindow):
             "profile": self._profile_to_dict(),
             "structured_evidence_entries": [dict(entry) for entry in self.evidence_entries],
             "structured_evidence": self._structured_evidence_text(),
-            "job_description": self.job_description_edit.toPlainText().strip() if hasattr(self, "job_description_edit") else "",
+            "job_details": self._job_details_dict(),
+            "job_description": self._combined_job_brief(),
             "generated_cv": self.generated_cv,
             "generated_covering_letter": self.generated_covering_letter,
             "quality_report": self._quality_report_text(),
@@ -1147,11 +1237,17 @@ class ResuBuilderQtApp(QMainWindow):
             return
         self.current_workspace_path = None
         self.workspace_name_edit.clear()
-        self.workspace_company_edit.clear()
-        self.workspace_role_edit.clear()
         self.workspace_path_edit.clear()
+        if hasattr(self, "job_company_edit"):
+            self.job_company_edit.clear()
+        if hasattr(self, "job_title_edit"):
+            self.job_title_edit.clear()
         if hasattr(self, "job_description_edit"):
             self.job_description_edit.clear()
+        if hasattr(self, "job_responsibilities_edit"):
+            self.job_responsibilities_edit.clear()
+        if hasattr(self, "job_requirements_edit"):
+            self.job_requirements_edit.clear()
         self.generated_cv = ""
         self.generated_covering_letter = ""
         self.job_fit_analysis = ""
@@ -1167,7 +1263,7 @@ class ResuBuilderQtApp(QMainWindow):
             self.review_score_label.setText("No quality check run yet")
         if hasattr(self, "review_status_label"):
             self.review_status_label.setText("Generate a CV or covering letter first, then run the checker.")
-        self._update_workspace_status("New workspace started. Add target company and role, then save when ready.")
+        self._update_workspace_status("New workspace started. Add job details on the Job page, then save when ready.")
         self.show_page("Workspace")
 
     def _save_workspace(self) -> None:
@@ -1232,8 +1328,13 @@ class ResuBuilderQtApp(QMainWindow):
                 "target_role": snapshot.get("target_role", ""),
             }
         self.workspace_name_edit.setText(str(metadata.get("application_name", "") or ""))
-        self.workspace_company_edit.setText(str(metadata.get("target_company", "") or ""))
-        self.workspace_role_edit.setText(str(metadata.get("target_role", "") or ""))
+        job_details = snapshot.get("job_details") or {}
+        if not isinstance(job_details, dict):
+            job_details = {}
+        if hasattr(self, "job_company_edit"):
+            self.job_company_edit.setText(str(job_details.get("company") or metadata.get("target_company", "") or ""))
+        if hasattr(self, "job_title_edit"):
+            self.job_title_edit.setText(str(job_details.get("job_title") or metadata.get("target_role", "") or ""))
         profile_data = dict(snapshot.get("profile") or {})
         # Qt workspaces now store evidence both inside the profile and at the top level.
         # The top-level copy is deliberate: it makes workspace load robust even if an older
@@ -1245,7 +1346,11 @@ class ResuBuilderQtApp(QMainWindow):
         if snapshot.get("structured_evidence") and not profile_data.get("structured_evidence"):
             profile_data["structured_evidence"] = snapshot.get("structured_evidence")
         self._apply_profile_data(profile_data)
-        self.job_description_edit.setPlainText(str(snapshot.get("job_description", "") or ""))
+        self.job_description_edit.setPlainText(str(job_details.get("full_description") or snapshot.get("job_description", "") or ""))
+        if hasattr(self, "job_responsibilities_edit"):
+            self.job_responsibilities_edit.setPlainText(str(job_details.get("responsibilities", "") or ""))
+        if hasattr(self, "job_requirements_edit"):
+            self.job_requirements_edit.setPlainText(str(job_details.get("requirements", "") or ""))
         self.generated_cv = str(snapshot.get("generated_cv", "") or "")
         self.generated_covering_letter = str(snapshot.get("generated_covering_letter", "") or "")
         if self.generated_cv:
@@ -1280,12 +1385,8 @@ class ResuBuilderQtApp(QMainWindow):
         self._sync_export_metadata_from_workspace(force_empty_only=False)
 
     def _sync_export_metadata_from_workspace(self, force_empty_only: bool = True) -> None:
-        company = self.workspace_company_edit.text().strip() if hasattr(self, "workspace_company_edit") else ""
-        role = self.workspace_role_edit.text().strip() if hasattr(self, "workspace_role_edit") else ""
-        if hasattr(self, "export_company_edit") and company and (not force_empty_only or not self.export_company_edit.text().strip()):
-            self.export_company_edit.setText(company)
-        if hasattr(self, "export_role_edit") and role and (not force_empty_only or not self.export_role_edit.text().strip()):
-            self.export_role_edit.setText(role)
+        # Export metadata is now derived from the Job page. This method remains as a compatibility hook.
+        return
 
     def _evidence_form_to_dict(self) -> dict[str, str]:
         return {
@@ -1597,10 +1698,11 @@ class ResuBuilderQtApp(QMainWindow):
         if not ok:
             QMessageBox.warning(self, "Cannot analyze job fit", message)
             return
-        job_description = self.job_description_edit.toPlainText().strip() if hasattr(self, "job_description_edit") else ""
-        if not job_description:
-            QMessageBox.warning(self, "Cannot analyze job fit", "Paste a job description before running the job fit analyzer.")
+        ok, message = self._validate_job_details()
+        if not ok:
+            QMessageBox.warning(self, "Cannot analyze job fit", message)
             return
+        job_description = self._combined_job_brief()
         if self._job_fit_running:
             QMessageBox.information(self, "Job fit analysis running", "Wait for the current job fit analysis to finish.")
             return
@@ -1609,8 +1711,8 @@ class ResuBuilderQtApp(QMainWindow):
         self._job_fit_job_id += 1
         job_id = self._job_fit_job_id
         settings = self._settings_to_ai_settings()
-        company = self.workspace_company_edit.text().strip() if hasattr(self, "workspace_company_edit") else ""
-        role = self.workspace_role_edit.text().strip() if hasattr(self, "workspace_role_edit") else ""
+        company = self._job_company()
+        role = self._job_title()
 
         self.job_fit_button.setEnabled(False)
         self.job_fit_status_label.setText(f"Analyzing fit with Ollama / {settings.ollama_model}. This can take a while.")
@@ -1666,8 +1768,9 @@ class ResuBuilderQtApp(QMainWindow):
         if not ok:
             QMessageBox.warning(self, "Cannot generate", message)
             return
-        if not self.job_description_edit.toPlainText().strip():
-            QMessageBox.warning(self, "Cannot generate", "Paste a job description before generating.")
+        ok, message = self._validate_job_details()
+        if not ok:
+            QMessageBox.warning(self, "Cannot generate", message)
             return
         if self._generation_running:
             QMessageBox.information(self, "Generation already running", "Wait for the current generation to finish.")
@@ -1676,7 +1779,7 @@ class ResuBuilderQtApp(QMainWindow):
         document_type = self.document_type_combo.currentText()
         request = GenerationRequest(
             profile=self._build_profile(),
-            job_description=self.job_description_edit.toPlainText().strip(),
+            job_description=self._combined_job_brief(),
             template_name=self.template_combo.currentText(),
             document_type=document_type,
             ai_settings=self._settings_to_ai_settings(),
@@ -1775,10 +1878,11 @@ class ResuBuilderQtApp(QMainWindow):
         if not text.strip():
             QMessageBox.warning(self, "Cannot run quality check", f"Generate a {document_type} first.")
             return
-        job_description = self.job_description_edit.toPlainText().strip()
-        if not job_description:
-            QMessageBox.warning(self, "Cannot run quality check", "Paste a job description before running the checker.")
+        ok, message = self._validate_job_details()
+        if not ok:
+            QMessageBox.warning(self, "Cannot run quality check", message)
             return
+        job_description = self._combined_job_brief()
         ok, message = self._validate_profile()
         if not ok:
             QMessageBox.warning(self, "Cannot run quality check", message)
@@ -1850,8 +1954,9 @@ class ResuBuilderQtApp(QMainWindow):
         if not text.strip():
             QMessageBox.warning(self, "Cannot save Markdown", f"Generate a {document_type} first.")
             return
-        company = self._clean_filename_part(self.export_company_edit.text(), "company") if hasattr(self, "export_company_edit") else "company"
-        role = self._clean_filename_part(self.export_role_edit.text(), "role") if hasattr(self, "export_role_edit") else "role"
+        metadata = self._workspace_metadata()
+        company = self._clean_filename_part(metadata.get("target_company", ""), "company")
+        role = self._clean_filename_part(metadata.get("target_role", ""), "role")
         prefix = "CV" if document_type == "CV" else "Covering_Letter"
         default_path = self._export_root() / f"{prefix}_{company}_{role}.md"
         file_path, _ = QFileDialog.getSaveFileName(self, "Save Markdown", str(default_path), "Markdown files (*.md);;Text files (*.txt)")
@@ -1873,8 +1978,9 @@ class ResuBuilderQtApp(QMainWindow):
             QMessageBox.warning(self, "Cannot export PDF", f"Generate a {document_type} first.")
             return
         template, page_size = self._export_settings()
-        company = self._clean_filename_part(self.export_company_edit.text(), "company") if hasattr(self, "export_company_edit") else "company"
-        role = self._clean_filename_part(self.export_role_edit.text(), "role") if hasattr(self, "export_role_edit") else "role"
+        metadata = self._workspace_metadata()
+        company = self._clean_filename_part(metadata.get("target_company", ""), "company")
+        role = self._clean_filename_part(metadata.get("target_role", ""), "role")
         prefix = "CV" if document_type == "CV" else "Covering_Letter"
         default_path = self._export_root() / f"{prefix}_{company}_{role}.pdf"
         file_path, _ = QFileDialog.getSaveFileName(self, "Export PDF", str(default_path), "PDF files (*.pdf)")
@@ -1900,16 +2006,17 @@ class ResuBuilderQtApp(QMainWindow):
         export_root = self._export_root()
         workspace_metadata = self._workspace_metadata() if hasattr(self, "workspace_name_edit") else {}
         metadata = {
-            "application_name": workspace_metadata.get("application_name") or f"{self.export_company_edit.text().strip()} {self.export_role_edit.text().strip()}".strip(),
-            "target_company": self.export_company_edit.text().strip() or workspace_metadata.get("target_company") or "company",
-            "target_role": self.export_role_edit.text().strip() or workspace_metadata.get("target_role") or "role",
+            "application_name": workspace_metadata.get("application_name") or f"{workspace_metadata.get('target_company', '')} {workspace_metadata.get('target_role', '')}".strip(),
+            "target_company": workspace_metadata.get("target_company") or "company",
+            "target_role": workspace_metadata.get("target_role") or "role",
             "created_at": "",
             "modified_at": datetime.now().isoformat(timespec="seconds"),
         }
         snapshot = {
             "source": "PySide6 experiment",
             "profile": self._build_profile().__dict__,
-            "job_description": self.job_description_edit.toPlainText().strip(),
+            "job_details": self._job_details_dict(),
+            "job_description": self._combined_job_brief(),
             "generated_cv": self.generated_cv,
             "generated_covering_letter": self.generated_covering_letter,
             "quality_report": self._quality_report_text(),

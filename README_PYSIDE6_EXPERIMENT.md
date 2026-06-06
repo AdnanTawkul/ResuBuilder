@@ -16,6 +16,7 @@ Working in the Qt prototype:
 - Save/load local profile from `data/candidate_profile.json`
 - Import/export profile JSON for faster testing
 - Structured Evidence Builder page
+- Dedicated Job page with company, role, full description, responsibilities, and requirements
 - Structured evidence saved inside profiles and workspaces
 - Structured evidence included in generation through the existing backend profile model
 - Job Fit Analyzer embedded inside the Generate page
@@ -73,11 +74,21 @@ You can also use **Import Profile JSON** and **Export Profile JSON** to move tes
 Good evidence is specific. Bad evidence is vague. Do not add fake metrics or unsupported technologies just to improve a score.
 
 
+## Job workflow
+
+1. Open **Job**.
+2. Enter the company and job title.
+3. Paste the full job description.
+4. Paste the responsibilities section under **Key responsibilities**.
+5. Paste must-have qualifications under **Required experience and skills**.
+6. Continue to Generate.
+
+This structured job brief is passed to the job fit analyzer, CV generator, covering-letter generator, quality checker, workspace save/load, and export package metadata.
+
 ## Job Fit workflow
 
 1. Open **Generate**.
-2. Paste the target job description.
-3. Click **Analyze Job Fit with Ollama** before generating.
+2. Click **Analyze Job Fit with Ollama** before generating.
 4. Review strong alignment, weak alignment, unsupported claims, and generation instructions.
 5. Generate the CV or covering letter. The stored job fit strategy is passed automatically into the generation request.
 6. Save the workspace so the job fit analysis is restored next time.
@@ -94,7 +105,7 @@ The Export page is intentionally scrollable. If the window height is small, scro
 2. Generate the covering letter.
 3. Run the quality check in the Review page.
 4. Open Export.
-5. Enter company and role.
+5. Confirm company and role are already set on the Job page.
 6. Export a selected PDF for quick testing, or export the complete application package.
 
 The package contains PDFs, Markdown sources, a quality report, and `application_summary.json`.
@@ -140,3 +151,12 @@ The Qt experiment now uses custom silent confirmation and information dialogs in
 - Stores the analysis in the workspace snapshot.
 - Passes the analysis into `GenerationRequest.job_fit_analysis` so CV and covering-letter prompts use the strategy automatically.
 - Keeps the old GUI untouched.
+
+
+## Step 24N - Qt structured Job page
+
+- Added a dedicated Job page to the Qt sidebar.
+- Moved company, job title, full job description, key responsibilities, and required experience into structured fields.
+- Removed redundant company and role fields from the Export page.
+- Export filenames and package metadata now use the Job page values.
+- Generation, job fit analysis, quality check, workspace save/load, and package export now use a combined structured job brief.

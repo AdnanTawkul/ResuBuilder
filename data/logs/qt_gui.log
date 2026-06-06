@@ -18,3 +18,9 @@
 [2026-06-06 22:20:21] Generation finished: job_id=1, chars=4026
 [2026-06-06 22:21:09] Generation started: job_id=2, type=Covering Letter, provider=Ollama Local, model=qwen3:14b
 [2026-06-06 22:21:17] Generation finished: job_id=2, chars=1685
+[2026-06-06 22:40:55] Generation started: job_id=1, type=Covering Letter, provider=Ollama Local, model=qwen3:14b
+[2026-06-06 22:41:06] Generation finished: job_id=1, chars=1665
+[2026-06-06 22:41:07] Job fit analysis started: job_id=1, model=qwen3:14b
+[2026-06-06 22:41:21] Job fit analysis finished: job_id=1, chars=3714
+[2026-06-06 22:41:43] Generation started: job_id=2, type=CV, provider=Ollama Local, model=qwen3:14b
+[2026-06-06 22:41:57] Generation finished: job_id=2, chars=3465

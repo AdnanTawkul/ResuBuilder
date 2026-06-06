@@ -16,6 +16,7 @@
 - Add Qt Workspace save/load.
 - Add Qt Evidence Builder.
 - Add Qt Job Fit Analyzer inside the Generate page.
+- Add dedicated Qt Job page and remove redundant Export company/role fields.
 
 ## Next
 
@@ -49,3 +50,10 @@ The Qt experiment now uses custom silent confirmation and information dialogs in
 - Added Ollama job-fit analysis inside the Generate page above the generation controls.
 - Saves and restores job fit analysis in workspace JSON files.
 - Sends the stored strategy into document generation so it affects CV and covering-letter output.
+
+
+## Step 24N - Qt structured Job page
+
+- Added a Job page for company, job title, full job description, key responsibilities, and required experience/skills.
+- Removed redundant company and role inputs from the Export page.
+- Uses structured job details in generation, job fit, quality check, workspace save/load, and application package export.
