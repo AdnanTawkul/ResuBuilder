@@ -263,3 +263,7 @@ Test checklist:
 - Improves pressed button states with inset-style borders.
 - Rounds scrollbar tracks and handles more consistently.
 - Widens top menus so long options remain readable.
+
+## Step 24AB: Rounded scrollbar handle polish
+
+This update forces the scrollbar handle itself to render as a rounded pill in all themes. Previous styling rounded the scrollbar track but the moving handle could still appear rectangular depending on Qt rendering.

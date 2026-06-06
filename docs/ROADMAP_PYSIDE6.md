@@ -146,3 +146,7 @@ Next check:
 ## Current polish task
 
 - Modern 3D interaction polish: horizontal scrollbar removal, floating cards, inset pressed buttons, rounded scrollbars, and wider menus.
+
+### Step 24AB . Rounded scrollbar handle polish
+- Force vertical and horizontal scrollbar handles to render as rounded pill controls.
+- Keep existing theme-specific colors and gradients.

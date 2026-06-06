@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QRegularExpression, Qt, QUrl, Signal
-from PySide6.QtGui import QAction, QColor, QDesktopServices, QRegularExpressionValidator
+from PySide6.QtCore import QObject, QRegularExpression, QRectF, Qt, QUrl, Signal
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QImage, QLinearGradient, QPainter, QPixmap, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QPlainTextEdit,
     QScrollArea,
+    QScrollBar,
     QSizePolicy,
     QSpinBox,
     QStackedWidget,
@@ -35,6 +36,11 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+try:
+    from PySide6.QtSvg import QSvgRenderer
+except Exception:  # pragma: no cover - QtSvg may be unavailable in rare PySide installs.
+    QSvgRenderer = None
 
 from .ai_service import AIService
 from .models import AISettings, CandidateProfile, GenerationRequest
@@ -55,6 +61,8 @@ from .qt_theme import DARK_BLUE_QSS, THEME_OPTIONS, theme_qss
 
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+ASSET_DIR = Path(__file__).resolve().parent / "assets"
+LOGO_PATH = ASSET_DIR / "resubuilder_logo.svg"
 
 OLLAMA_MODEL_OPTIONS = [
     "qwen3:8b",
@@ -235,6 +243,86 @@ class ImproveSignals(QObject):
     failed = Signal(int, str)
 
 
+
+
+class RoundedScrollBar(QScrollBar):
+    """Custom-painted scrollbar with a genuinely rounded moving handle.
+
+    Qt stylesheets can leave native scrollbar thumbs with square ends on Windows,
+    even when border-radius is specified. Painting the thumb ourselves gives the
+    Modern 3D themes the pill-shaped scrollbar the UI is aiming for.
+    """
+
+    def __init__(self, orientation: Qt.Orientation, parent: QWidget | None = None) -> None:
+        super().__init__(orientation, parent)
+        self.setFixedWidth(20) if orientation == Qt.Orientation.Vertical else self.setFixedHeight(20)
+        self.setMouseTracking(True)
+
+    def _theme_name(self) -> str:
+        app = QApplication.instance()
+        value = app.property("resubuilder_theme") if app is not None else None
+        return str(value or "Dark blue")
+
+    def _colors(self) -> tuple[QColor, QColor, QColor]:
+        theme = self._theme_name()
+        if theme == "Modern 3D Light":
+            return QColor("#dfe6f1"), QColor("#1d6df2"), QColor("#22c7dc")
+        if theme == "Modern 3D Dark":
+            return QColor("#202020"), QColor("#ff8a5b"), QColor("#7c3aed")
+        if theme == "Light":
+            return QColor("#e2e8f0"), QColor("#2563eb"), QColor("#7c3aed")
+        if theme == "Dark":
+            return QColor("#232323"), QColor("#ff8a5b"), QColor("#7c3aed")
+        return QColor("#0a1627"), QColor("#38bdf8"), QColor("#7c3aed")
+
+    def _slider_rect(self) -> QRectF:
+        groove = self.rect().adjusted(5, 5, -5, -5)
+        minimum = self.minimum()
+        maximum = self.maximum()
+        page = max(1, self.pageStep())
+        if self.orientation() == Qt.Orientation.Vertical:
+            available = max(1, groove.height())
+            total = max(1, maximum - minimum + page)
+            handle_len = max(54, int(available * page / total))
+            handle_len = min(handle_len, available)
+            travel = max(1, available - handle_len)
+            ratio = 0 if maximum <= minimum else (self.value() - minimum) / (maximum - minimum)
+            y = groove.top() + int(travel * ratio)
+            return QRectF(groove.left(), y, groove.width(), handle_len)
+        available = max(1, groove.width())
+        total = max(1, maximum - minimum + page)
+        handle_len = max(54, int(available * page / total))
+        handle_len = min(handle_len, available)
+        travel = max(1, available - handle_len)
+        ratio = 0 if maximum <= minimum else (self.value() - minimum) / (maximum - minimum)
+        x = groove.left() + int(travel * ratio)
+        return QRectF(x, groove.top(), handle_len, groove.height())
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - Qt method name
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+
+        track, start, end = self._colors()
+        track.setAlpha(210)
+        track_rect = QRectF(self.rect().adjusted(3, 3, -3, -3))
+        track_radius = min(track_rect.width(), track_rect.height()) / 2
+        painter.setBrush(track)
+        painter.drawRoundedRect(track_rect, track_radius, track_radius)
+
+        handle = self._slider_rect()
+        if handle.width() <= 0 or handle.height() <= 0:
+            return
+        if self.orientation() == Qt.Orientation.Vertical:
+            gradient = QLinearGradient(handle.center().x(), handle.top(), handle.center().x(), handle.bottom())
+        else:
+            gradient = QLinearGradient(handle.left(), handle.center().y(), handle.right(), handle.center().y())
+        gradient.setColorAt(0.0, start)
+        gradient.setColorAt(1.0, end)
+        radius = min(handle.width(), handle.height()) / 2
+        painter.setBrush(gradient)
+        painter.drawRoundedRect(handle, radius, radius)
+
 class Card(QFrame):
     def __init__(self, title: str = "", subtitle: str = "", parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -313,7 +401,8 @@ class ResuBuilderQtApp(QMainWindow):
         self.page_buttons: dict[str, QPushButton] = {}
         self.pages: dict[str, QWidget] = {}
 
-        self.setStyleSheet(theme_qss(getattr(self.app_settings, "ui_theme", "Dark blue")))
+        self._apply_theme_styles(getattr(self.app_settings, "ui_theme", "Dark blue"))
+        self._apply_window_icon()
         self._build_menu()
         self._build_shell()
         self.show_page("Welcome")
@@ -346,6 +435,7 @@ class ResuBuilderQtApp(QMainWindow):
         If a page needs a horizontal scrollbar, the layout is too wide. We solve that by
         wrapping/splitting controls instead of making the user slide sideways.
         """
+        self._install_rounded_scrollbars(scroll)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
@@ -356,6 +446,65 @@ class ResuBuilderQtApp(QMainWindow):
         shadow.setOffset(0, 9)
         shadow.setColor(QColor(0, 0, 0, 78))
         frame.setGraphicsEffect(shadow)
+
+    def _logo_pixmap(self, size: int) -> QPixmap | None:
+        """Load the optional SVG logo from src/resume_ai/assets/resubuilder_logo.svg."""
+        if not LOGO_PATH.exists():
+            return None
+        pixmap = QPixmap(str(LOGO_PATH))
+        if pixmap.isNull() and QSvgRenderer is not None:
+            try:
+                renderer = QSvgRenderer(str(LOGO_PATH))
+                image = QImage(size, size, QImage.Format.Format_ARGB32)
+                image.fill(Qt.GlobalColor.transparent)
+                painter = QPainter(image)
+                renderer.render(painter)
+                painter.end()
+                pixmap = QPixmap.fromImage(image)
+            except Exception:
+                pixmap = QPixmap()
+        if pixmap.isNull():
+            return None
+        return pixmap.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+
+    def _apply_window_icon(self) -> None:
+        if LOGO_PATH.exists():
+            self.setWindowIcon(QIcon(str(LOGO_PATH)))
+
+    def _logo_label(self, size: int, fallback_text: str = "RB") -> QLabel:
+        label = QLabel(fallback_text)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setFixedSize(size, size)
+        pixmap = self._logo_pixmap(size)
+        if pixmap is not None:
+            label.setPixmap(pixmap)
+            label.setStyleSheet("background: transparent; border: none;")
+        else:
+            radius = max(12, int(size * 0.28))
+            font_size = max(16, int(size * 0.33))
+            label.setStyleSheet(
+                f"background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ff7a59,stop:0.45 #ec4899,stop:1 #7c3aed);"
+                f"border-radius: {radius}px; color: white; font-size: {font_size}px; font-weight: 900;"
+            )
+        return label
+
+    def _apply_theme_styles(self, theme_name: str) -> None:
+        theme = self._normalized_theme(theme_name) if hasattr(self, "_normalized_theme") else (theme_name or "Dark blue")
+        app = QApplication.instance()
+        if app is not None:
+            app.setProperty("resubuilder_theme", theme)
+        QMainWindow.setStyleSheet(self, theme_qss(theme))
+        self._refresh_custom_scrollbars()
+
+    def _install_rounded_scrollbars(self, widget: QWidget) -> None:
+        if hasattr(widget, "setVerticalScrollBar"):
+            widget.setVerticalScrollBar(RoundedScrollBar(Qt.Orientation.Vertical, widget))
+        if hasattr(widget, "setHorizontalScrollBar"):
+            widget.setHorizontalScrollBar(RoundedScrollBar(Qt.Orientation.Horizontal, widget))
+
+    def _refresh_custom_scrollbars(self) -> None:
+        for bar in self.findChildren(RoundedScrollBar):
+            bar.update()
 
     def _build_menu(self) -> None:
         """Build a compact top menu.
@@ -407,7 +556,7 @@ class ResuBuilderQtApp(QMainWindow):
         self.app_settings.ui_theme = theme
         if hasattr(self, "settings_theme_combo"):
             self.settings_theme_combo.setCurrentText(theme)
-        self.setStyleSheet(theme_qss(theme))
+        self._apply_theme_styles(theme)
         try:
             save_app_settings(self.app_settings)
         except Exception as exc:  # noqa: BLE001
@@ -550,7 +699,7 @@ class ResuBuilderQtApp(QMainWindow):
         appearance_row.setSpacing(12)
         appearance_row.addWidget(theme_combo)
         preview_button = QPushButton("Preview Theme")
-        preview_button.clicked.connect(lambda: self.setStyleSheet(theme_qss(self._normalized_theme(theme_combo.currentText()))))
+        preview_button.clicked.connect(lambda: self._apply_theme_styles(self._normalized_theme(theme_combo.currentText())))
         appearance_row.addWidget(preview_button)
         appearance_row.addStretch(1)
         appearance_card.layout.addLayout(appearance_row)
@@ -648,12 +797,21 @@ class ResuBuilderQtApp(QMainWindow):
         sidebar_layout.setContentsMargins(24, 28, 24, 24)
         sidebar_layout.setSpacing(12)
 
+        brand_row = QHBoxLayout()
+        brand_row.setContentsMargins(0, 0, 0, 0)
+        brand_row.setSpacing(12)
+        brand_row.addWidget(self._logo_label(42))
+        brand_text = QVBoxLayout()
+        brand_text.setContentsMargins(0, 0, 0, 0)
+        brand_text.setSpacing(2)
         brand = QLabel("ResuBuilder")
         brand.setObjectName("BrandTitle")
         subtitle = QLabel("Qt GUI experiment")
         subtitle.setObjectName("BrandSubtitle")
-        sidebar_layout.addWidget(brand)
-        sidebar_layout.addWidget(subtitle)
+        brand_text.addWidget(brand)
+        brand_text.addWidget(subtitle)
+        brand_row.addLayout(brand_text, 1)
+        sidebar_layout.addLayout(brand_row)
         sidebar_layout.addSpacing(20)
 
         for page_name in ["Welcome", "Workspace", "Profile", "Evidence", "Job", "Generate", "Review", "Export"]:
@@ -719,13 +877,7 @@ class ResuBuilderQtApp(QMainWindow):
         hero_layout.setContentsMargins(28, 28, 28, 28)
         hero_layout.setSpacing(18)
 
-        logo = QLabel("RB")
-        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        logo.setFixedSize(78, 78)
-        logo.setStyleSheet(
-            "background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ff7a59,stop:0.45 #ec4899,stop:1 #7c3aed);"
-            "border-radius: 22px; color: white; font-size: 26px; font-weight: 900;"
-        )
+        logo = self._logo_label(78)
         hero_title = QLabel("Build stronger applications without losing truth control.")
         hero_title.setObjectName("PageTitle")
         hero_text = QLabel(
@@ -1638,6 +1790,7 @@ class ResuBuilderQtApp(QMainWindow):
             widget.setMinimumWidth(min_width)
             widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         elif isinstance(widget, (QTextEdit, QPlainTextEdit)):
+            self._install_rounded_scrollbars(widget)
             widget.setMinimumWidth(min_width)
             widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
@@ -2859,7 +3012,7 @@ class ResuBuilderQtApp(QMainWindow):
 
     def _preview_selected_theme(self) -> None:
         theme = self.settings_theme_combo.currentText() if hasattr(self, "settings_theme_combo") else "Dark blue"
-        self.setStyleSheet(theme_qss(theme))
+        self._apply_theme_styles(theme)
         if hasattr(self, "settings_status_label"):
             self.settings_status_label.setText("Theme preview applied. Click Save Settings to remember it after restart.")
 
@@ -2910,7 +3063,7 @@ class ResuBuilderQtApp(QMainWindow):
             self.export_page_size_combo.setCurrentText(getattr(self.app_settings, "pdf_page_size", "A4"))
         if hasattr(self, "export_dir_edit") and getattr(self.app_settings, "last_export_dir", ""):
             self.export_dir_edit.setText(getattr(self.app_settings, "last_export_dir", ""))
-        self.setStyleSheet(theme_qss(getattr(self.app_settings, "ui_theme", "Dark blue")))
+        self._apply_theme_styles(getattr(self.app_settings, "ui_theme", "Dark blue"))
 
     def _reset_settings(self) -> None:
         response = QMessageBox.question(

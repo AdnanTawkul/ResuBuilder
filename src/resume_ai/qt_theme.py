@@ -699,16 +699,51 @@ QMenu::separator { height: 1px; background: rgba(255,255,255,0.08); margin: 6px 
 """
 
 
+# Final scrollbar pill override.
+# Qt stylesheets sometimes render scrollbar handles as rectangular unless the
+# handle dimensions, margin, and radius are applied after all theme-specific
+# rules. This keeps each theme's colors but forces the moving thumb itself to
+# render as a rounded pill.
+SCROLLBAR_PILL_HANDLE_QSS = """
+QScrollBar:vertical {
+    width: 20px;
+    margin: 0px;
+    border-radius: 10px;
+}
+QScrollBar::handle:vertical {
+    min-height: 64px;
+    margin: 4px;
+    border-radius: 8px;
+}
+QScrollBar::handle:vertical:hover {
+    border-radius: 8px;
+}
+QScrollBar:horizontal {
+    height: 20px;
+    margin: 0px;
+    border-radius: 10px;
+}
+QScrollBar::handle:horizontal {
+    min-width: 64px;
+    margin: 4px;
+    border-radius: 8px;
+}
+QScrollBar::handle:horizontal:hover {
+    border-radius: 8px;
+}
+"""
+
+
 def theme_qss(theme_name: str) -> str:
     theme = (theme_name or "Dark blue").strip()
     if theme == "Soft Blue":
         theme = "Dark blue"
     if theme == "Light":
-        return _with_asset_urls(LIGHT_QSS)
+        return _with_asset_urls(LIGHT_QSS + SCROLLBAR_PILL_HANDLE_QSS)
     if theme == "Dark":
-        return _with_asset_urls(DARK_QSS)
+        return _with_asset_urls(DARK_QSS + SCROLLBAR_PILL_HANDLE_QSS)
     if theme == "Modern 3D Light":
-        return _with_asset_urls(MODERN_3D_LIGHT_QSS)
+        return _with_asset_urls(MODERN_3D_LIGHT_QSS + SCROLLBAR_PILL_HANDLE_QSS)
     if theme == "Modern 3D Dark":
-        return _with_asset_urls(MODERN_3D_DARK_QSS)
-    return _with_asset_urls(DARK_BLUE_QSS)
+        return _with_asset_urls(MODERN_3D_DARK_QSS + SCROLLBAR_PILL_HANDLE_QSS)
+    return _with_asset_urls(DARK_BLUE_QSS + SCROLLBAR_PILL_HANDLE_QSS)
