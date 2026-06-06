@@ -6,6 +6,7 @@ Resume AI 2 is a local desktop application for tailoring CVs and covering letter
 
 - Application workspace save/load
 - Candidate profile fields
+- Structured evidence builder for projects, jobs, tools, outcomes, proof, and job signals
 - Job description input
 - Existing CV and covering letter input
 - Existing PDF CV/covering-letter import
@@ -32,6 +33,9 @@ Resume AI 2 is a local desktop application for tailoring CVs and covering letter
 - Lower-temperature Ollama settings for more consistent local output
 - Truth-aware quality scoring that separates supported job signals from unsupported job-fit gaps
 - Covering-letter-specific generation, review, and quality-check logic
+- One-click application package export
+- Separate stored generated CV and covering letter outputs
+- Package export with final PDFs, Markdown sources, quality report, and summary JSON
 
 ## Run the app
 
@@ -69,11 +73,12 @@ Recommended flow:
 1. Click New Application.
 2. Enter application name, target company, and target role.
 3. Fill or import candidate profile, job description, existing CV, or existing covering letter.
-4. Generate the CV or covering letter.
-5. Run Quality Check and AI Quality Review.
-6. Improve with Quality Fixes if needed.
-7. Save Application.
-8. Export the final PDF.
+4. Add structured evidence blocks for the strongest projects, jobs, tools, outcomes, and proof.
+5. Generate the CV or covering letter.
+6. Run Quality Check and AI Quality Review.
+7. Improve with Quality Fixes if needed.
+8. Save Application.
+9. Export the full application package.
 ```
 
 Workspace files are saved as JSON under:
@@ -82,11 +87,23 @@ Workspace files are saved as JSON under:
 data/applications/
 ```
 
+Use **Export Application Package** in the Output tab after both final documents are generated. It creates a folder under `exports/` or your configured export directory with:
+
+```text
+- Final CV PDF
+- Final covering letter PDF
+- CV Markdown source
+- Covering letter Markdown source
+- Quality report Markdown
+- Application summary JSON
+```
+
 A workspace stores:
 
 ```text
 - Application metadata
 - Candidate profile
+- Structured evidence blocks
 - Job description
 - Existing CV/covering-letter input
 - Selected templates
@@ -128,16 +145,18 @@ Timeout: 240
 1. Create a new application workspace.
 2. Import an existing PDF CV or covering letter into the Existing CV / Covering Letter tab.
 3. Import or paste a job description.
-4. Generate a tailored CV.
-5. Generate a tailored covering letter.
-6. Run Quality Check on both document types.
-7. Run AI Quality Review.
-8. Click Improve with Quality Fixes.
-9. Save the application workspace.
-10. Close and reopen the app.
-11. Load the saved application workspace.
-12. Confirm imported text, generated output, and quality report restore correctly.
-13. Export PDF only after manual verification.
+4. Add structured evidence blocks for your strongest relevant proof.
+5. Generate a tailored CV.
+6. Generate a tailored covering letter.
+7. Run Quality Check on both document types.
+8. Run AI Quality Review.
+9. Click Improve with Quality Fixes.
+10. Save the application workspace.
+11. Close and reopen the app.
+12. Load the saved application workspace.
+13. Confirm structured evidence, imported text, generated output, and quality report restore correctly.
+14. Click Export Application Package only after manual verification.
+15. Confirm the export folder contains the CV PDF, covering letter PDF, quality report, and summary JSON.
 
 ## Git workflow
 
@@ -146,11 +165,11 @@ Use GitHub Desktop. Keep each major feature on its own branch until tested.
 Recommended branch:
 
 ```text
-feature/covering-letter-generation
+feature/structured-evidence-builder
 ```
 
 Recommended commit for this update:
 
 ```text
-Replace resume generation with covering letter generation
+Add structured evidence builder
 ```

@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+import os
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from tkinter import ttk
 
 from .ai_service import AIService
+from .application_package_exporter import export_application_package
 from .document_importer import load_document_text
 from .models import AISettings, CandidateProfile, GenerationRequest
 from .pdf_exporter import export_markdown_to_pdf
@@ -78,6 +80,10 @@ class ResumeAIApp(tk.Tk):
         self.last_ai_review_markdown = ""
         self.active_quality_improvement_job_id = 0
         self.quality_improvement_original_output = ""
+        self.generated_cv_markdown = ""
+        self.generated_covering_letter_markdown = ""
+        self.cv_quality_report_markdown = ""
+        self.covering_letter_quality_report_markdown = ""
 
         default_ai_settings = self.ai_service.get_default_settings()
         self.ai_enabled_var = tk.BooleanVar(value=default_ai_settings.use_ai)
@@ -89,6 +95,14 @@ class ResumeAIApp(tk.Tk):
         self.ai_timeout_var = tk.StringVar(value=str(default_ai_settings.timeout_seconds))
         self.ai_mode_var = tk.StringVar(value=default_ai_settings.generation_mode)
         self.prompt_preview_type_var = tk.StringVar(value="Covering Letter")
+        self.evidence_type_var = tk.StringVar(value="Project")
+        self.evidence_title_var = tk.StringVar(value="")
+        self.evidence_context_var = tk.StringVar(value="")
+        self.evidence_tools_var = tk.StringVar(value="")
+        self.evidence_methods_var = tk.StringVar(value="")
+        self.evidence_outcome_var = tk.StringVar(value="")
+        self.evidence_metrics_var = tk.StringVar(value="")
+        self.evidence_signals_var = tk.StringVar(value="")
         self.generate_buttons: list[ttk.Button] = []
         self.improvement_buttons: list[ttk.Button] = []
         self.ai_review_buttons: list[ttk.Button] = []
@@ -106,6 +120,7 @@ class ResumeAIApp(tk.Tk):
 
         workspace_tab = ttk.Frame(notebook, padding=12)
         personal_tab = ttk.Frame(notebook, padding=12)
+        evidence_tab = ttk.Frame(notebook, padding=12)
         job_tab = ttk.Frame(notebook, padding=12)
         source_tab = ttk.Frame(notebook, padding=12)
         template_tab = ttk.Frame(notebook, padding=12)
@@ -115,6 +130,7 @@ class ResumeAIApp(tk.Tk):
 
         notebook.add(workspace_tab, text="Workspace")
         notebook.add(personal_tab, text="Personal Info")
+        notebook.add(evidence_tab, text="Evidence Builder")
         notebook.add(job_tab, text="Job Description")
         notebook.add(source_tab, text="Existing CV / Covering Letter")
         notebook.add(template_tab, text="Templates")
@@ -124,6 +140,7 @@ class ResumeAIApp(tk.Tk):
 
         self._build_workspace_tab(workspace_tab)
         self._build_personal_tab(personal_tab)
+        self._build_evidence_tab(evidence_tab)
         self._build_job_tab(job_tab)
         self._build_source_tab(source_tab)
         self._build_template_tab(template_tab)
@@ -231,6 +248,105 @@ class ResumeAIApp(tk.Tk):
             text = tk.Text(parent, height=4, wrap="word")
             text.grid(row=row, column=1, columnspan=3, sticky="nsew", pady=6)
             self.multi_line_fields[key] = text
+
+    def _build_evidence_tab(self, parent: ttk.Frame) -> None:
+        parent.columnconfigure(1, weight=1)
+        parent.columnconfigure(3, weight=1)
+        parent.rowconfigure(9, weight=1)
+
+        ttk.Label(
+            parent,
+            text="Build truthful evidence blocks. This gives the AI stronger raw material than vague project/job text.",
+        ).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 8))
+
+        ttk.Label(parent, text="Evidence type").grid(row=1, column=0, sticky="w", pady=5)
+        ttk.Combobox(
+            parent,
+            textvariable=self.evidence_type_var,
+            values=["Project", "Work experience", "Education", "Research", "Volunteer", "Other"],
+            state="readonly",
+        ).grid(row=1, column=1, sticky="ew", pady=5)
+
+        ttk.Label(parent, text="Title").grid(row=1, column=2, sticky="w", padx=(12, 8), pady=5)
+        ttk.Entry(parent, textvariable=self.evidence_title_var).grid(row=1, column=3, sticky="ew", pady=5)
+
+        ttk.Label(parent, text="Context / situation").grid(row=2, column=0, sticky="w", pady=5)
+        ttk.Entry(parent, textvariable=self.evidence_context_var).grid(row=2, column=1, columnspan=3, sticky="ew", pady=5)
+
+        ttk.Label(parent, text="Tools / technologies").grid(row=3, column=0, sticky="w", pady=5)
+        ttk.Entry(parent, textvariable=self.evidence_tools_var).grid(row=3, column=1, columnspan=3, sticky="ew", pady=5)
+
+        ttk.Label(parent, text="Methods / actions").grid(row=4, column=0, sticky="w", pady=5)
+        ttk.Entry(parent, textvariable=self.evidence_methods_var).grid(row=4, column=1, columnspan=3, sticky="ew", pady=5)
+
+        ttk.Label(parent, text="Outcome / purpose").grid(row=5, column=0, sticky="w", pady=5)
+        ttk.Entry(parent, textvariable=self.evidence_outcome_var).grid(row=5, column=1, columnspan=3, sticky="ew", pady=5)
+
+        ttk.Label(parent, text="Metrics / proof").grid(row=6, column=0, sticky="w", pady=5)
+        ttk.Entry(parent, textvariable=self.evidence_metrics_var).grid(row=6, column=1, columnspan=3, sticky="ew", pady=5)
+
+        ttk.Label(parent, text="Relevant job signals").grid(row=7, column=0, sticky="w", pady=5)
+        ttk.Entry(parent, textvariable=self.evidence_signals_var).grid(row=7, column=1, columnspan=3, sticky="ew", pady=5)
+
+        button_frame = ttk.Frame(parent)
+        button_frame.grid(row=8, column=0, columnspan=4, sticky="w", pady=(8, 8))
+        ttk.Button(button_frame, text="Add Evidence Block", command=self._add_structured_evidence).pack(side="left")
+        ttk.Button(button_frame, text="Clear Builder Fields", command=self._clear_evidence_builder).pack(side="left", padx=8)
+        ttk.Button(button_frame, text="Clear All Evidence", command=lambda: self._clear_text(self.structured_evidence_text)).pack(side="left")
+
+        ttk.Label(parent, text="Structured Evidence").grid(row=9, column=0, sticky="nw", pady=(8, 0))
+        self.structured_evidence_text = tk.Text(parent, height=12, wrap="word")
+        self.structured_evidence_text.grid(row=9, column=1, columnspan=3, sticky="nsew", pady=(8, 0))
+        self.multi_line_fields["structured_evidence"] = self.structured_evidence_text
+
+        help_text = (
+            "Example: Project | Pneumonia Detection | Built a CNN classifier using TensorFlow/Keras | "
+            "trained and evaluated image-classification models | supported diagnostic screening workflow | "
+            "proof: course project, GitHub repository | signals: deep learning, model training, medical imaging."
+        )
+        ttk.Label(parent, text=help_text, wraplength=900).grid(row=10, column=0, columnspan=4, sticky="w", pady=(10, 0))
+
+    def _add_structured_evidence(self) -> None:
+        values = {
+            "type": self.evidence_type_var.get().strip(),
+            "title": self.evidence_title_var.get().strip(),
+            "context": self.evidence_context_var.get().strip(),
+            "tools": self.evidence_tools_var.get().strip(),
+            "methods": self.evidence_methods_var.get().strip(),
+            "outcome": self.evidence_outcome_var.get().strip(),
+            "metrics": self.evidence_metrics_var.get().strip(),
+            "signals": self.evidence_signals_var.get().strip(),
+        }
+        if not values["title"] and not values["context"] and not values["tools"] and not values["methods"]:
+            messagebox.showwarning("Missing evidence", "Add at least a title, context, tool, or method before creating an evidence block.")
+            return
+
+        block_lines = [
+            f"### {values['type']}: {values['title'] or 'Untitled evidence'}",
+            f"- Context: {values['context'] or 'Not specified'}",
+            f"- Tools/technologies: {values['tools'] or 'Not specified'}",
+            f"- Methods/actions: {values['methods'] or 'Not specified'}",
+            f"- Outcome/purpose: {values['outcome'] or 'Not specified'}",
+            f"- Metrics/proof: {values['metrics'] or 'Not specified'}",
+            f"- Relevant job signals: {values['signals'] or 'Not specified'}",
+        ]
+        existing = self.structured_evidence_text.get("1.0", tk.END).strip()
+        insert_text = "\n\n".join([part for part in [existing, "\n".join(block_lines)] if part]).strip()
+        self.structured_evidence_text.delete("1.0", tk.END)
+        self.structured_evidence_text.insert("1.0", insert_text)
+        self.application_modified_var.set(datetime.now().isoformat(timespec="seconds"))
+        self.status_var.set("Structured evidence block added")
+        self._clear_evidence_builder()
+
+    def _clear_evidence_builder(self) -> None:
+        self.evidence_type_var.set("Project")
+        self.evidence_title_var.set("")
+        self.evidence_context_var.set("")
+        self.evidence_tools_var.set("")
+        self.evidence_methods_var.set("")
+        self.evidence_outcome_var.set("")
+        self.evidence_metrics_var.set("")
+        self.evidence_signals_var.set("")
 
     def _build_job_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(0, weight=1)
@@ -401,6 +517,9 @@ class ResumeAIApp(tk.Tk):
         buttons.grid(row=2, column=0, sticky="ew")
         ttk.Button(buttons, text="Save Output as Markdown", command=self._save_output).pack(side="left")
         ttk.Button(buttons, text="Export Output as PDF", command=self._export_output_pdf).pack(side="left", padx=8)
+        ttk.Button(buttons, text="Export Application Package", command=self._export_application_package).pack(side="left")
+        ttk.Button(buttons, text="Show CV", command=self._show_generated_cv).pack(side="left", padx=(8, 0))
+        ttk.Button(buttons, text="Show Covering Letter", command=self._show_generated_covering_letter).pack(side="left", padx=8)
         ttk.Button(buttons, text="Check Output Quality", command=self._run_quality_check).pack(side="left", padx=8)
         output_improve_button = ttk.Button(buttons, text="Improve with Quality Fixes", command=self._regenerate_with_quality_fixes)
         output_improve_button.pack(side="left")
@@ -450,9 +569,13 @@ class ResumeAIApp(tk.Tk):
             "documents": {
                 "last_document_type": self.last_document_type,
                 "output_markdown": self.output_text.get("1.0", tk.END).strip(),
+                "generated_cv_markdown": self.generated_cv_markdown,
+                "generated_covering_letter_markdown": self.generated_covering_letter_markdown,
                 "quality_report_markdown": self.last_quality_report_markdown,
                 "quality_heuristic_markdown": self.last_quality_heuristic_markdown,
                 "ai_review_markdown": self.last_ai_review_markdown,
+                "cv_quality_report_markdown": self.cv_quality_report_markdown,
+                "covering_letter_quality_report_markdown": self.covering_letter_quality_report_markdown,
             },
         }
 
@@ -506,12 +629,21 @@ class ResumeAIApp(tk.Tk):
         self.last_document_type = documents.get("last_document_type", "document")
         self.last_candidate_name = self.single_line_fields.get("name", tk.StringVar(value="candidate")).get() or "candidate"
         self.last_generation_request = None
+        legacy_output = documents.get("output_markdown", "")
+        self.generated_cv_markdown = documents.get("generated_cv_markdown", "")
+        self.generated_covering_letter_markdown = documents.get("generated_covering_letter_markdown", "")
+        if legacy_output and not self.generated_cv_markdown and self.last_document_type.lower() == "cv":
+            self.generated_cv_markdown = legacy_output
+        if legacy_output and not self.generated_covering_letter_markdown and self.last_document_type.lower() != "cv":
+            self.generated_covering_letter_markdown = legacy_output
+        self.cv_quality_report_markdown = documents.get("cv_quality_report_markdown", "")
+        self.covering_letter_quality_report_markdown = documents.get("covering_letter_quality_report_markdown", "")
         self.last_quality_report_markdown = documents.get("quality_report_markdown", "")
         self.last_quality_heuristic_markdown = documents.get("quality_heuristic_markdown", "")
         self.last_ai_review_markdown = documents.get("ai_review_markdown", "")
 
         self.output_text.delete("1.0", tk.END)
-        self.output_text.insert("1.0", documents.get("output_markdown", ""))
+        self.output_text.insert("1.0", legacy_output)
         self.quality_text.delete("1.0", tk.END)
         self.quality_text.insert("1.0", self.last_quality_report_markdown)
 
@@ -543,6 +675,10 @@ class ResumeAIApp(tk.Tk):
         self._clear_quality_report()
         self.last_generation_request = None
         self.last_document_type = "document"
+        self.generated_cv_markdown = ""
+        self.generated_covering_letter_markdown = ""
+        self.cv_quality_report_markdown = ""
+        self.covering_letter_quality_report_markdown = ""
         self.status_var.set("New application workspace ready")
 
     def _save_application_workspace(self, save_as: bool = False) -> None:
@@ -684,9 +820,11 @@ class ResumeAIApp(tk.Tk):
         self.last_generation_request = request
         self.last_document_type = request.document_type.lower()
         self.last_candidate_name = request.profile.name or "candidate"
+        self._store_generated_document(request.document_type, result)
         self.last_quality_report_markdown = ""
         self.last_quality_heuristic_markdown = ""
         self.last_ai_review_markdown = ""
+        self._clear_stored_quality_for_document(request.document_type)
         self.quality_text.delete("1.0", tk.END)
         self.output_text.delete("1.0", tk.END)
         self.output_text.insert("1.0", result)
@@ -792,6 +930,7 @@ class ResumeAIApp(tk.Tk):
         self.last_quality_heuristic_markdown = markdown_report
         self.last_ai_review_markdown = ""
         self._render_quality_panel()
+        self._store_current_quality_report()
         self.status_var.set(f"Quality check complete: {report.score}/100")
 
     def _run_ai_quality_review(self) -> None:
@@ -840,12 +979,14 @@ class ResumeAIApp(tk.Tk):
     def _finish_ai_quality_review(self, result: str) -> None:
         self.last_ai_review_markdown = result.strip()
         self._render_quality_panel()
+        self._store_current_quality_report()
         self.status_var.set("AI quality review complete")
         self._set_ai_review_state(False)
 
     def _fail_ai_quality_review(self, exc: Exception) -> None:
         self.last_ai_review_markdown = f"# AI Quality Review\n\nAI quality review failed: {exc}"
         self._render_quality_panel()
+        self._store_current_quality_report()
         self.status_var.set("AI quality review failed")
         self._set_ai_review_state(False)
         messagebox.showerror("AI quality review failed", f"Could not complete the AI quality review:\n{exc}")
@@ -878,6 +1019,7 @@ class ResumeAIApp(tk.Tk):
         self.last_quality_report_markdown = ""
         self.last_quality_heuristic_markdown = ""
         self.last_ai_review_markdown = ""
+        self._clear_stored_quality_for_document(self.last_document_type)
         self.quality_text.delete("1.0", tk.END)
         self.status_var.set("Quality report cleared")
 
@@ -977,11 +1119,13 @@ class ResumeAIApp(tk.Tk):
         self.last_generation_request = request
         self.last_document_type = request.document_type.lower()
         self.last_candidate_name = request.profile.name or "candidate"
+        self._store_generated_document(request.document_type, result)
         self.last_quality_heuristic_markdown = markdown_report
         self.last_ai_review_markdown = ""
         self.output_text.delete("1.0", tk.END)
         self.output_text.insert("1.0", result)
         self._render_quality_panel()
+        self._store_current_quality_report()
         self.application_modified_var.set(datetime.now().isoformat(timespec="seconds"))
         self.status_var.set(f"Improved {request.document_type.lower()} saved to {saved_path}. New score: {score}/100")
         self._set_generating_state(False)
@@ -1039,6 +1183,131 @@ class ResumeAIApp(tk.Tk):
         path = save_markdown(f"quality_report_{timestamp}.md", content)
         self.status_var.set(f"Quality report saved to {path}")
         messagebox.showinfo("Saved", f"Quality report saved to:\n{path}")
+
+
+    def _store_generated_document(self, document_type: str, content: str) -> None:
+        if (document_type or "").strip().lower() == "cv":
+            self.generated_cv_markdown = content.strip()
+        else:
+            self.generated_covering_letter_markdown = content.strip()
+
+    def _clear_stored_quality_for_document(self, document_type: str) -> None:
+        if (document_type or "").strip().lower() == "cv":
+            self.cv_quality_report_markdown = ""
+        else:
+            self.covering_letter_quality_report_markdown = ""
+
+    def _store_current_quality_report(self) -> None:
+        report = self.last_quality_report_markdown.strip()
+        if not report:
+            return
+        if self.last_document_type.strip().lower() == "cv":
+            self.cv_quality_report_markdown = report
+        else:
+            self.covering_letter_quality_report_markdown = report
+
+    def _show_generated_cv(self) -> None:
+        if not self.generated_cv_markdown.strip():
+            messagebox.showwarning("No CV", "Generate a tailored CV first.")
+            return
+        self.last_document_type = "cv"
+        self.last_generation_request = GenerationRequest(
+            profile=self._collect_profile(),
+            job_description=self.job_description_text.get("1.0", tk.END).strip(),
+            template_name=self.template_var.get(),
+            document_type="CV",
+            ai_settings=self._collect_ai_settings(),
+        )
+        self.output_text.delete("1.0", tk.END)
+        self.output_text.insert("1.0", self.generated_cv_markdown)
+        self.last_quality_report_markdown = self.cv_quality_report_markdown
+        self.last_quality_heuristic_markdown = self.cv_quality_report_markdown
+        self.last_ai_review_markdown = ""
+        self.quality_text.delete("1.0", tk.END)
+        self.quality_text.insert("1.0", self.cv_quality_report_markdown)
+        self.status_var.set("Showing generated CV")
+
+    def _show_generated_covering_letter(self) -> None:
+        if not self.generated_covering_letter_markdown.strip():
+            messagebox.showwarning("No covering letter", "Generate a tailored covering letter first.")
+            return
+        self.last_document_type = "covering letter"
+        self.last_generation_request = GenerationRequest(
+            profile=self._collect_profile(),
+            job_description=self.job_description_text.get("1.0", tk.END).strip(),
+            template_name=self.template_var.get(),
+            document_type="Covering Letter",
+            ai_settings=self._collect_ai_settings(),
+        )
+        self.output_text.delete("1.0", tk.END)
+        self.output_text.insert("1.0", self.generated_covering_letter_markdown)
+        self.last_quality_report_markdown = self.covering_letter_quality_report_markdown
+        self.last_quality_heuristic_markdown = self.covering_letter_quality_report_markdown
+        self.last_ai_review_markdown = ""
+        self.quality_text.delete("1.0", tk.END)
+        self.quality_text.insert("1.0", self.covering_letter_quality_report_markdown)
+        self.status_var.set("Showing generated covering letter")
+
+    def _combined_package_quality_report(self) -> str:
+        parts = []
+        if self.cv_quality_report_markdown.strip():
+            parts.append("# CV Quality Report\n\n" + self.cv_quality_report_markdown.strip())
+        if self.covering_letter_quality_report_markdown.strip():
+            parts.append("# Covering Letter Quality Report\n\n" + self.covering_letter_quality_report_markdown.strip())
+        if not parts and self.last_quality_report_markdown.strip():
+            parts.append("# Latest Quality Report\n\n" + self.last_quality_report_markdown.strip())
+        return "\n\n---\n\n".join(parts)
+
+    def _export_application_package(self) -> None:
+        cv_markdown = self.generated_cv_markdown.strip()
+        covering_letter_markdown = self.generated_covering_letter_markdown.strip()
+        current_output = self.output_text.get("1.0", tk.END).strip()
+        if current_output and not cv_markdown and self.last_document_type.strip().lower() == "cv":
+            cv_markdown = current_output
+        if current_output and not covering_letter_markdown and self.last_document_type.strip().lower() != "cv":
+            covering_letter_markdown = current_output
+
+        missing = []
+        if not cv_markdown:
+            missing.append("tailored CV")
+        if not covering_letter_markdown:
+            missing.append("tailored covering letter")
+        if missing:
+            messagebox.showwarning(
+                "Package incomplete",
+                "Generate both documents before exporting an application package. Missing: " + ", ".join(missing),
+            )
+            return
+
+        company = self.application_company_var.get().strip()
+        role = self.application_role_var.get().strip()
+        if not company or not role:
+            messagebox.showwarning("Missing workspace metadata", "Fill Target company and Target role in the Workspace tab before exporting a package.")
+            return
+
+        snapshot = self._collect_application_workspace_snapshot()
+        try:
+            package_path = export_application_package(
+                export_root=EXPORT_DIR,
+                metadata=snapshot.get("metadata", {}),
+                cv_markdown=cv_markdown,
+                covering_letter_markdown=covering_letter_markdown,
+                quality_report_markdown=self._combined_package_quality_report(),
+                application_snapshot=snapshot,
+                page_size=self.pdf_page_size_var.get(),
+                template_name=self.pdf_template_var.get(),
+            )
+        except Exception as exc:
+            messagebox.showerror("Package export failed", f"Could not export application package:\n{exc}")
+            self.status_var.set("Application package export failed")
+            return
+
+        self.status_var.set(f"Application package exported to {package_path}")
+        try:
+            os.startfile(str(package_path))
+        except Exception:
+            pass
+        messagebox.showinfo("Application package exported", f"Application package exported to:\n{package_path}")
 
     def _save_output(self) -> None:
         content = self.output_text.get("1.0", tk.END).strip()

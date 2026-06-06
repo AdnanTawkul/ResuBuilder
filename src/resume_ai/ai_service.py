@@ -543,6 +543,9 @@ Skills:
 Languages:
 {profile.languages}
 
+Structured evidence:
+{getattr(profile, "structured_evidence", "")}
+
 JOB SIGNALS TO USE ONLY IF SUPPORTED:
 {', '.join(job_signals) if job_signals else 'None detected'}
 
@@ -632,6 +635,9 @@ Skills:
 
 Languages:
 {profile.languages}
+
+Structured evidence:
+{getattr(profile, "structured_evidence", "")}
 
 JOB SIGNALS TO USE ONLY IF SUPPORTED:
 {', '.join(job_signals) if job_signals else 'None detected'}
@@ -756,6 +762,9 @@ Skills:
 Languages:
 {profile.languages}
 
+Structured evidence:
+{getattr(profile, "structured_evidence", "")}
+
 JOB SIGNALS TO USE ONLY IF SUPPORTED:
 {', '.join(job_signals) if job_signals else 'None detected'}
 
@@ -866,6 +875,7 @@ Degree, school, dates, focus areas."""
             profile.projects,
             profile.skills,
             profile.languages,
+            getattr(profile, "structured_evidence", ""),
             profile.general_cv,
             profile.general_cover_letter,
             profile.general_resume,

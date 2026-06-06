@@ -12,23 +12,19 @@ env/
 # PyCharm
 .idea/
 
-# Secrets and local environment files
+# Local secrets and environment files
 .env
 .env.*
+*.env
 
 # Generated/private user data
-exports/
 data/profile.json
-data/applications/*.json
+data/applications/
+data/exports/
+exports/
+*.pdf
+*.docx
 
 # OS files
 .DS_Store
 Thumbs.db
-
-# Generated documents
-*.pdf
-*.docx
-
-# Local saved application workspaces
-data/applications/
-data/exports/
