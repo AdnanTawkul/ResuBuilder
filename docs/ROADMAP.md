@@ -68,3 +68,5 @@
 - Added distinct complete and warning sidebar styles.
 - Styled text areas for better readability.
 - Added CustomTkinter dependency for a modern UI base while keeping the existing workflow logic stable.
+
+- Step 21 follow-up: cleaned the Export step controls to avoid cropped action buttons at normal window sizes.

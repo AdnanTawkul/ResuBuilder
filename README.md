@@ -300,3 +300,5 @@ Prompt preview now opens in a dedicated preview window instead of writing to the
 - Styled complete and warning workflow states.
 - Improved text area readability.
 - Added CustomTkinter as an optional modern UI dependency while preserving the current Tkinter/ttk implementation.
+
+- Fixed the Export step action bar so buttons wrap into two rows and no longer get cropped at the default window width.
