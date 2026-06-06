@@ -14,6 +14,7 @@ from .document_importer import load_document_text
 from .models import AISettings, CandidateProfile, GenerationRequest
 from .pdf_exporter import export_markdown_to_pdf
 from .pdf_templates import get_pdf_template_names, PDF_TEMPLATES
+from .settings_manager import AppSettings, load_app_settings, save_app_settings
 from .quality_checker import analyze_document, format_quality_report
 from .storage import EXPORT_DIR, load_json, save_json, save_markdown
 from .templates import get_template_names, TEMPLATES
@@ -59,11 +60,12 @@ class ResumeAIApp(tk.Tk):
         self.minsize(980, 680)
 
         self.ai_service = AIService()
+        self.app_settings = load_app_settings()
         self.single_line_fields: dict[str, tk.StringVar] = {}
         self.multi_line_fields: dict[str, tk.Text] = {}
-        self.template_var = tk.StringVar(value="ATS Friendly")
-        self.pdf_page_size_var = tk.StringVar(value="A4")
-        self.pdf_template_var = tk.StringVar(value="ATS Friendly")
+        self.template_var = tk.StringVar(value=self.app_settings.template_name)
+        self.pdf_page_size_var = tk.StringVar(value=self.app_settings.pdf_page_size)
+        self.pdf_template_var = tk.StringVar(value=self.app_settings.pdf_template)
         self.status_var = tk.StringVar(value="Ready")
         self.application_name_var = tk.StringVar(value="")
         self.application_company_var = tk.StringVar(value="")
@@ -87,14 +89,14 @@ class ResumeAIApp(tk.Tk):
         self.last_job_fit_analysis_markdown = ""
 
         default_ai_settings = self.ai_service.get_default_settings()
-        self.ai_enabled_var = tk.BooleanVar(value=default_ai_settings.use_ai)
-        self.ai_provider_var = tk.StringVar(value=default_ai_settings.provider)
+        self.ai_enabled_var = tk.BooleanVar(value=self.app_settings.use_ai)
+        self.ai_provider_var = tk.StringVar(value=self.app_settings.ai_provider or default_ai_settings.provider)
         self.ai_api_key_var = tk.StringVar(value="")
-        self.ai_model_var = tk.StringVar(value=default_ai_settings.model)
-        self.ollama_base_url_var = tk.StringVar(value=default_ai_settings.ollama_base_url)
-        self.ollama_model_var = tk.StringVar(value=default_ai_settings.ollama_model)
-        self.ai_timeout_var = tk.StringVar(value=str(default_ai_settings.timeout_seconds))
-        self.ai_mode_var = tk.StringVar(value=default_ai_settings.generation_mode)
+        self.ai_model_var = tk.StringVar(value=self.app_settings.openai_model or default_ai_settings.model)
+        self.ollama_base_url_var = tk.StringVar(value=self.app_settings.ollama_base_url or default_ai_settings.ollama_base_url)
+        self.ollama_model_var = tk.StringVar(value=self.app_settings.ollama_model or default_ai_settings.ollama_model)
+        self.ai_timeout_var = tk.StringVar(value=str(self.app_settings.timeout_seconds or default_ai_settings.timeout_seconds))
+        self.ai_mode_var = tk.StringVar(value=self.app_settings.generation_mode or default_ai_settings.generation_mode)
         self.prompt_preview_type_var = tk.StringVar(value="Covering Letter")
         self.evidence_type_var = tk.StringVar(value="Project")
         self.evidence_title_var = tk.StringVar(value="")
@@ -110,48 +112,164 @@ class ResumeAIApp(tk.Tk):
         self.quality_check_buttons: list[ttk.Button] = []
         self.job_fit_buttons: list[ttk.Button] = []
 
+        self.workflow_frames: dict[str, ttk.Frame] = {}
+        self.workflow_buttons: dict[str, ttk.Button] = {}
+        self.workflow_step_status: dict[str, str] = {}
+        self.workflow_steps: list[dict[str, object]] = []
+        self.skipped_workflow_steps: set[str] = set()
+        self.current_workflow_step_key = "workspace"
+        self.workflow_title_var = tk.StringVar(value="Workspace")
+        self.workflow_hint_var = tk.StringVar(value="Start by creating or loading an application workspace.")
+        self.workflow_progress_var = tk.StringVar(value="")
+        self.application_package_exported = False
+
         self._build_ui()
         self._load_saved_profile()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_ui(self) -> None:
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
 
-        notebook = ttk.Notebook(self)
-        notebook.grid(row=0, column=0, sticky="nsew")
+        self.workflow_steps = [
+            {
+                "key": "workspace",
+                "label": "Workspace",
+                "required": True,
+                "hint": "Create or load one application workspace before you start tailoring documents.",
+            },
+            {
+                "key": "profile",
+                "label": "Profile",
+                "required": True,
+                "hint": "Add contact details, career background, and optional existing CV or covering-letter material.",
+            },
+            {
+                "key": "evidence",
+                "label": "Evidence",
+                "required": False,
+                "hint": "Optional but powerful. Add structured proof so the AI can write stronger, safer claims.",
+            },
+            {
+                "key": "job",
+                "label": "Job Description",
+                "required": True,
+                "hint": "Paste the full job description. Weak job input produces weak tailoring.",
+            },
+            {
+                "key": "job_fit",
+                "label": "Job Fit",
+                "required": False,
+                "hint": "Optional strategy pass. Use Ollama to identify fit, gaps, and safe positioning before generation.",
+            },
+            {
+                "key": "generate",
+                "label": "Generate",
+                "required": True,
+                "hint": "Choose writing style and generate both the tailored CV and covering letter.",
+            },
+            {
+                "key": "review",
+                "label": "Review",
+                "required": False,
+                "hint": "Optional but recommended. Run quality checks and AI review before exporting.",
+            },
+            {
+                "key": "export",
+                "label": "Export",
+                "required": True,
+                "hint": "Review generated documents and export PDFs or a complete application package.",
+            },
+            {
+                "key": "settings",
+                "label": "Settings",
+                "required": False,
+                "hint": "Configure AI provider, model, timeout, templates, and saved app defaults.",
+            },
+        ]
 
-        workspace_tab = ttk.Frame(notebook, padding=12)
-        personal_tab = ttk.Frame(notebook, padding=12)
-        evidence_tab = ttk.Frame(notebook, padding=12)
-        job_tab = ttk.Frame(notebook, padding=12)
-        job_fit_tab = ttk.Frame(notebook, padding=12)
-        source_tab = ttk.Frame(notebook, padding=12)
-        template_tab = ttk.Frame(notebook, padding=12)
-        ai_tab = ttk.Frame(notebook, padding=12)
-        quality_tab = ttk.Frame(notebook, padding=12)
-        output_tab = ttk.Frame(notebook, padding=12)
+        shell = ttk.Frame(self)
+        shell.grid(row=0, column=0, sticky="nsew")
+        shell.columnconfigure(1, weight=1)
+        shell.rowconfigure(0, weight=1)
 
-        notebook.add(workspace_tab, text="Workspace")
-        notebook.add(personal_tab, text="Personal Info")
-        notebook.add(evidence_tab, text="Evidence Builder")
-        notebook.add(job_tab, text="Job Description")
-        notebook.add(job_fit_tab, text="Job Fit Analyzer")
-        notebook.add(source_tab, text="Existing CV / Covering Letter")
-        notebook.add(template_tab, text="Templates")
-        notebook.add(ai_tab, text="AI Settings")
-        notebook.add(quality_tab, text="Quality Check")
-        notebook.add(output_tab, text="Output")
+        sidebar = ttk.Frame(shell, padding=(12, 12))
+        sidebar.grid(row=0, column=0, sticky="ns")
+        sidebar.columnconfigure(0, weight=1)
 
-        self._build_workspace_tab(workspace_tab)
-        self._build_personal_tab(personal_tab)
-        self._build_evidence_tab(evidence_tab)
-        self._build_job_tab(job_tab)
-        self._build_job_fit_tab(job_fit_tab)
-        self._build_source_tab(source_tab)
-        self._build_template_tab(template_tab)
-        self._build_ai_tab(ai_tab)
-        self._build_quality_tab(quality_tab)
-        self._build_output_tab(output_tab)
+        ttk.Label(sidebar, text="Resume AI 2", font=("Segoe UI", 14, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 4))
+        ttk.Label(
+            sidebar,
+            text="Guided workflow",
+            foreground="#555555",
+        ).grid(row=1, column=0, sticky="w", pady=(0, 12))
+
+        for index, step in enumerate(self.workflow_steps, start=2):
+            key = str(step["key"])
+            button = ttk.Button(sidebar, text=str(step["label"]), command=lambda step_key=key: self._show_workflow_step(step_key))
+            button.grid(row=index, column=0, sticky="ew", pady=3)
+            self.workflow_buttons[key] = button
+
+        ttk.Separator(sidebar, orient="horizontal").grid(row=len(self.workflow_steps) + 2, column=0, sticky="ew", pady=(12, 8))
+        ttk.Label(
+            sidebar,
+            text="Status legend:\n✓ complete\n○ not started\n⚠ needs attention\n↷ skipped",
+            justify="left",
+            foreground="#555555",
+        ).grid(row=len(self.workflow_steps) + 3, column=0, sticky="w")
+
+        content_shell = ttk.Frame(shell, padding=(10, 12, 12, 12))
+        content_shell.grid(row=0, column=1, sticky="nsew")
+        content_shell.columnconfigure(0, weight=1)
+        content_shell.rowconfigure(2, weight=1)
+
+        header = ttk.Frame(content_shell)
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        header.columnconfigure(0, weight=1)
+        ttk.Label(header, textvariable=self.workflow_title_var, font=("Segoe UI", 16, "bold")).grid(row=0, column=0, sticky="w")
+        ttk.Label(header, textvariable=self.workflow_progress_var, foreground="#555555").grid(row=0, column=1, sticky="e")
+        ttk.Label(header, textvariable=self.workflow_hint_var, wraplength=860).grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 0))
+
+        navigation = ttk.Frame(content_shell)
+        navigation.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        navigation.columnconfigure(3, weight=1)
+        self.back_step_button = ttk.Button(navigation, text="Back", command=self._previous_workflow_step)
+        self.back_step_button.grid(row=0, column=0, padx=(0, 6))
+        self.skip_step_button = ttk.Button(navigation, text="Skip & Continue", command=self._skip_current_workflow_step)
+        self.skip_step_button.grid(row=0, column=1, padx=(0, 6))
+        self.complete_step_button = ttk.Button(navigation, text="Complete & Continue", command=self._mark_current_step_complete)
+        self.complete_step_button.grid(row=0, column=2, padx=(0, 6))
+        ttk.Label(
+            navigation,
+            text="Complete required steps. Skip optional steps only when the quality tradeoff is acceptable.",
+            foreground="#555555",
+        ).grid(row=0, column=3, sticky="e")
+
+        self.workflow_content = ttk.Frame(content_shell)
+        self.workflow_content.grid(row=2, column=0, sticky="nsew")
+        self.workflow_content.columnconfigure(0, weight=1)
+        self.workflow_content.rowconfigure(0, weight=1)
+
+        builders = {
+            "workspace": self._build_workspace_tab,
+            "profile": self._build_profile_workflow_step,
+            "evidence": self._build_evidence_tab,
+            "job": self._build_job_tab,
+            "job_fit": self._build_job_fit_tab,
+            "generate": self._build_generate_workflow_step,
+            "review": self._build_quality_tab,
+            "export": self._build_output_tab,
+            "settings": self._build_ai_tab,
+        }
+
+        for step in self.workflow_steps:
+            key = str(step["key"])
+            frame = ttk.Frame(self.workflow_content, padding=4)
+            frame.grid(row=0, column=0, sticky="nsew")
+            frame.columnconfigure(0, weight=1)
+            frame.rowconfigure(0, weight=1)
+            builders[key](frame)
+            self.workflow_frames[key] = frame
 
         footer = ttk.Frame(self, padding=(12, 8))
         footer.grid(row=1, column=0, sticky="ew")
@@ -159,12 +277,178 @@ class ResumeAIApp(tk.Tk):
 
         ttk.Label(footer, textvariable=self.status_var).grid(row=0, column=0, sticky="w")
         ttk.Button(footer, text="Save Profile", command=self._save_profile).grid(row=0, column=1, padx=6)
-        cv_button = ttk.Button(footer, text="Generate Tailored CV", command=lambda: self._generate("CV"))
-        cover_letter_button = ttk.Button(footer, text="Generate Tailored Covering Letter", command=lambda: self._generate("Covering Letter"))
-        cv_button.grid(row=0, column=2, padx=6)
-        cover_letter_button.grid(row=0, column=3, padx=6)
-        self.generate_buttons = [cv_button, cover_letter_button]
+        ttk.Button(footer, text="Save Application", command=lambda: self._save_application_workspace(save_as=False)).grid(row=0, column=2, padx=6)
+        ttk.Button(footer, text="Export Application Package", command=self._export_application_package).grid(row=0, column=3, padx=6)
 
+        self._show_workflow_step("workspace")
+        self._refresh_workflow_statuses()
+
+    def _build_profile_workflow_step(self, parent: ttk.Frame) -> None:
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=1)
+        parent.rowconfigure(1, weight=1)
+
+        profile_frame = ttk.LabelFrame(parent, text="Personal profile", padding=10)
+        profile_frame.grid(row=0, column=0, sticky="nsew", pady=(0, 10))
+        self._build_personal_tab(profile_frame)
+
+        source_frame = ttk.LabelFrame(parent, text="Existing CV / Covering Letter", padding=10)
+        source_frame.grid(row=1, column=0, sticky="nsew")
+        self._build_source_tab(source_frame)
+
+    def _build_generate_workflow_step(self, parent: ttk.Frame) -> None:
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(3, weight=1)
+
+        ttk.Label(
+            parent,
+            text="Generate the two deliverables from the current profile, structured evidence, job description, and optional job-fit strategy.",
+            wraplength=960,
+        ).grid(row=0, column=0, sticky="w", pady=(0, 8))
+
+        actions = ttk.LabelFrame(parent, text="Generation actions", padding=10)
+        actions.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        actions.columnconfigure(2, weight=1)
+        cv_button = ttk.Button(actions, text="Generate Tailored CV", command=lambda: self._generate("CV"))
+        cover_letter_button = ttk.Button(actions, text="Generate Tailored Covering Letter", command=lambda: self._generate("Covering Letter"))
+        cv_button.grid(row=0, column=0, padx=(0, 8), pady=4)
+        cover_letter_button.grid(row=0, column=1, padx=(0, 8), pady=4)
+        self.generate_buttons.extend([cv_button, cover_letter_button])
+        ttk.Button(actions, text="Preview Prompt", command=self._preview_ai_prompt).grid(row=0, column=2, sticky="w", padx=(8, 0), pady=4)
+        ttk.Label(actions, text="Preview type").grid(row=0, column=3, sticky="e", padx=(8, 4))
+        ttk.Combobox(actions, textvariable=self.prompt_preview_type_var, values=["Covering Letter", "CV"], width=14, state="readonly").grid(row=0, column=4, sticky="e")
+
+        template_frame = ttk.LabelFrame(parent, text="Writing template", padding=10)
+        template_frame.grid(row=2, column=0, sticky="nsew", pady=(0, 10))
+        template_frame.columnconfigure(0, weight=1)
+        template_frame.rowconfigure(0, weight=1)
+        self._build_template_tab(template_frame)
+
+        guidance = tk.Text(parent, height=8, wrap="word")
+        guidance.grid(row=3, column=0, sticky="nsew")
+        guidance.insert(
+            "1.0",
+            "Recommended order:\n"
+            "1. Generate the CV.\n"
+            "2. Generate the covering letter.\n"
+            "3. Move to Review and run the quality check.\n"
+            "4. Improve only after reading the warnings.\n\n"
+            "Do not export documents just because the AI produced clean text. Verify every claim first.",
+        )
+        guidance.configure(state="disabled")
+
+    def _workflow_step_index(self, step_key: str) -> int:
+        keys = [str(step["key"]) for step in self.workflow_steps]
+        try:
+            return keys.index(step_key)
+        except ValueError:
+            return 0
+
+    def _workflow_step_definition(self, step_key: str) -> dict[str, object]:
+        for step in self.workflow_steps:
+            if str(step["key"]) == step_key:
+                return step
+        return self.workflow_steps[0]
+
+    def _show_workflow_step(self, step_key: str) -> None:
+        if step_key not in self.workflow_frames:
+            step_key = "workspace"
+        self.current_workflow_step_key = step_key
+        self.workflow_frames[step_key].tkraise()
+        step = self._workflow_step_definition(step_key)
+        self.workflow_title_var.set(str(step["label"]))
+        self.workflow_hint_var.set(str(step["hint"]))
+        index = self._workflow_step_index(step_key) + 1
+        self.workflow_progress_var.set(f"Step {index} of {len(self.workflow_steps)}")
+        if hasattr(self, "skip_step_button"):
+            self.skip_step_button.configure(state="normal" if not bool(step.get("required", False)) else "disabled")
+        if hasattr(self, "back_step_button"):
+            self.back_step_button.configure(state="normal" if index > 1 else "disabled")
+        if hasattr(self, "complete_step_button"):
+            is_last_step = index == len(self.workflow_steps)
+            self.complete_step_button.configure(text="Mark Complete" if is_last_step else "Complete & Continue")
+        self._refresh_workflow_statuses()
+
+    def _previous_workflow_step(self) -> None:
+        index = self._workflow_step_index(self.current_workflow_step_key)
+        if index > 0:
+            self._show_workflow_step(str(self.workflow_steps[index - 1]["key"]))
+
+    def _next_workflow_step(self) -> None:
+        index = self._workflow_step_index(self.current_workflow_step_key)
+        if index < len(self.workflow_steps) - 1:
+            self._show_workflow_step(str(self.workflow_steps[index + 1]["key"]))
+
+    def _skip_current_workflow_step(self) -> None:
+        step = self._workflow_step_definition(self.current_workflow_step_key)
+        if bool(step.get("required", False)):
+            messagebox.showwarning("Required step", "This step is required and cannot be skipped.")
+            return
+        warning = (
+            f"Skip {step['label']}?\n\n"
+            "The app will continue, but document quality may be weaker because this step adds strategy, proof, or review discipline."
+        )
+        if not messagebox.askyesno("Skip optional step", warning):
+            return
+        self.skipped_workflow_steps.add(self.current_workflow_step_key)
+        self.status_var.set(f"Skipped {step['label']}")
+        self._refresh_workflow_statuses()
+        self._next_workflow_step()
+
+    def _mark_current_step_complete(self) -> None:
+        self.skipped_workflow_steps.discard(self.current_workflow_step_key)
+        self.workflow_step_status[self.current_workflow_step_key] = "manual_complete"
+        step = self._workflow_step_definition(self.current_workflow_step_key)
+        self.status_var.set(f"Completed {step['label']}")
+        self._refresh_workflow_statuses()
+        self._next_workflow_step()
+
+    def _workflow_step_symbol(self, step_key: str) -> str:
+        if step_key in self.skipped_workflow_steps:
+            return "↷"
+        if self.workflow_step_status.get(step_key) == "manual_complete":
+            return "✓"
+
+        profile = self._collect_profile() if hasattr(self, "single_line_fields") and self.single_line_fields else None
+        job_description = self.job_description_text.get("1.0", tk.END).strip() if hasattr(self, "job_description_text") else ""
+        structured_evidence = ""
+        if hasattr(self, "structured_evidence_text"):
+            structured_evidence = self.structured_evidence_text.get("1.0", tk.END).strip()
+
+        if step_key == "workspace":
+            return "✓" if (self.application_company_var.get().strip() and self.application_role_var.get().strip()) or self.current_application_path else "⚠"
+        if step_key == "profile":
+            return "✓" if profile and profile.name and profile.email else "⚠"
+        if step_key == "evidence":
+            return "✓" if structured_evidence else "○"
+        if step_key == "job":
+            return "✓" if job_description else "⚠"
+        if step_key == "job_fit":
+            return "✓" if self.last_job_fit_analysis_markdown.strip() else "○"
+        if step_key == "generate":
+            if self.generated_cv_markdown.strip() and self.generated_covering_letter_markdown.strip():
+                return "✓"
+            if self.generated_cv_markdown.strip() or self.generated_covering_letter_markdown.strip():
+                return "⚠"
+            return "○"
+        if step_key == "review":
+            return "✓" if self.last_quality_report_markdown.strip() or self.cv_quality_report_markdown.strip() or self.covering_letter_quality_report_markdown.strip() else "○"
+        if step_key == "export":
+            return "✓" if self.application_package_exported else ("⚠" if self.generated_cv_markdown.strip() and self.generated_covering_letter_markdown.strip() else "○")
+        if step_key == "settings":
+            return "✓"
+        return "○"
+
+    def _refresh_workflow_statuses(self) -> None:
+        if not getattr(self, "workflow_buttons", None):
+            return
+        for step in self.workflow_steps:
+            key = str(step["key"])
+            label = str(step["label"])
+            symbol = self._workflow_step_symbol(key)
+            button = self.workflow_buttons.get(key)
+            if button is not None:
+                button.configure(text=f"{symbol} {label}")
 
     def _build_workspace_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(1, weight=1)
@@ -341,6 +625,8 @@ class ResumeAIApp(tk.Tk):
         self.structured_evidence_text.insert("1.0", insert_text)
         self.application_modified_var.set(datetime.now().isoformat(timespec="seconds"))
         self.status_var.set("Structured evidence block added")
+        self.skipped_workflow_steps.discard("evidence")
+        self._refresh_workflow_statuses()
         self._clear_evidence_builder()
 
     def _clear_evidence_builder(self) -> None:
@@ -477,6 +763,8 @@ class ResumeAIApp(tk.Tk):
         button_frame.grid(row=11, column=0, columnspan=2, sticky="ew", pady=(8, 8))
         ttk.Button(button_frame, text="Test Selected AI Provider", command=self._test_ai_connection).pack(side="left")
         ttk.Button(button_frame, text="Preview Prompt", command=self._preview_ai_prompt).pack(side="left", padx=8)
+        ttk.Button(button_frame, text="Save App Settings", command=lambda: self._save_app_settings(show_message=True)).pack(side="left")
+        ttk.Button(button_frame, text="Reset App Settings", command=self._reset_app_settings).pack(side="left", padx=8)
         ttk.Button(button_frame, text="Clear Session API Key", command=lambda: self.ai_api_key_var.set("")).pack(side="left")
         ttk.Label(button_frame, text="Preview type").pack(side="left", padx=(18, 4))
         ttk.Combobox(button_frame, textvariable=self.prompt_preview_type_var, values=["Covering Letter", "CV"], width=10, state="readonly").pack(side="left")
@@ -737,7 +1025,7 @@ class ResumeAIApp(tk.Tk):
         target_path = self.current_application_path
         if save_as or target_path is None:
             selected = filedialog.asksaveasfilename(
-                initialdir=APPLICATIONS_DIR,
+                initialdir=self._application_dialog_initial_dir(),
                 initialfile=suggested_name,
                 defaultextension=".json",
                 filetypes=[("Application workspace", "*.json"), ("All files", "*.*")],
@@ -754,6 +1042,8 @@ class ResumeAIApp(tk.Tk):
             return
 
         self.current_application_path = saved_path
+        self.app_settings.last_workspace_dir = str(saved_path.parent)
+        self._save_app_settings(show_message=False)
         self.application_modified_var.set(snapshot.get("saved_at", ""))
         if not self.application_created_var.get().strip():
             self.application_created_var.set(snapshot.get("metadata", {}).get("created_at", ""))
@@ -764,7 +1054,7 @@ class ResumeAIApp(tk.Tk):
     def _load_application_workspace(self) -> None:
         ensure_applications_dir()
         selected = filedialog.askopenfilename(
-            initialdir=APPLICATIONS_DIR,
+            initialdir=self._application_dialog_initial_dir(),
             filetypes=[("Application workspace", "*.json"), ("All files", "*.*")],
         )
         if not selected:
@@ -773,10 +1063,87 @@ class ResumeAIApp(tk.Tk):
         source_path = Path(selected)
         try:
             data = load_application_snapshot(source_path)
+            self.app_settings.last_workspace_dir = str(source_path.parent)
             self._apply_application_workspace_snapshot(data, source_path=source_path)
+            self._save_app_settings(show_message=False)
         except Exception as exc:
             messagebox.showerror("Load failed", f"Could not load application workspace:\n{exc}")
             self.status_var.set("Application workspace load failed")
+
+
+    def _application_dialog_initial_dir(self) -> Path:
+        configured = Path(self.app_settings.last_workspace_dir) if self.app_settings.last_workspace_dir else APPLICATIONS_DIR
+        return configured if configured.exists() else APPLICATIONS_DIR
+
+    def _export_dialog_initial_dir(self) -> Path:
+        configured = Path(self.app_settings.last_export_dir) if self.app_settings.last_export_dir else EXPORT_DIR
+        return configured if configured.exists() else EXPORT_DIR
+
+    def _collect_app_settings(self) -> AppSettings:
+        try:
+            timeout_seconds = int(self.ai_timeout_var.get().strip() or "120")
+        except ValueError:
+            timeout_seconds = 120
+        timeout_seconds = max(30, min(timeout_seconds, 600))
+
+        return AppSettings(
+            template_name=self.template_var.get().strip() or "ATS Friendly",
+            pdf_template=self.pdf_template_var.get().strip() or "ATS Friendly",
+            pdf_page_size=self.pdf_page_size_var.get().strip() or "A4",
+            use_ai=bool(self.ai_enabled_var.get()),
+            ai_provider=self.ai_provider_var.get().strip() or AIService.PROVIDER_OLLAMA,
+            openai_model=self.ai_model_var.get().strip() or AIService.DEFAULT_OPENAI_MODEL,
+            generation_mode=self.ai_mode_var.get().strip() or "Balanced",
+            ollama_base_url=self.ollama_base_url_var.get().strip() or AIService.DEFAULT_OLLAMA_BASE_URL,
+            ollama_model=self.ollama_model_var.get().strip() or AIService.DEFAULT_OLLAMA_MODEL,
+            timeout_seconds=timeout_seconds,
+            last_workspace_dir=self.app_settings.last_workspace_dir,
+            last_export_dir=self.app_settings.last_export_dir,
+        )
+
+    def _apply_app_settings(self, settings: AppSettings) -> None:
+        self.app_settings = settings
+        self.template_var.set(settings.template_name)
+        self.pdf_template_var.set(settings.pdf_template)
+        self.pdf_page_size_var.set(settings.pdf_page_size)
+        self.ai_enabled_var.set(settings.use_ai)
+        self.ai_provider_var.set(settings.ai_provider)
+        self.ai_model_var.set(settings.openai_model)
+        self.ai_mode_var.set(settings.generation_mode)
+        self.ollama_base_url_var.set(settings.ollama_base_url)
+        self.ollama_model_var.set(settings.ollama_model)
+        self.ai_timeout_var.set(str(settings.timeout_seconds))
+        self.ai_api_key_var.set("")
+        self._refresh_ai_provider_help()
+        self._update_template_description()
+
+    def _save_app_settings(self, show_message: bool = False) -> None:
+        self.app_settings = self._collect_app_settings()
+        try:
+            saved_path = save_app_settings(self.app_settings)
+        except Exception as exc:
+            self.status_var.set("App settings save failed")
+            if show_message:
+                messagebox.showerror("Settings save failed", f"Could not save app settings:\n{exc}")
+            return
+
+        self.status_var.set(f"App settings saved to {saved_path}")
+        if show_message:
+            messagebox.showinfo("Settings saved", f"App settings saved locally to:\n{saved_path}\n\nOpenAI session API keys are not saved.")
+
+    def _reset_app_settings(self) -> None:
+        proceed = messagebox.askyesno(
+            "Reset app settings",
+            "Reset AI, template, PDF, and folder defaults? This will not delete saved applications or your profile.",
+        )
+        if not proceed:
+            return
+        self._apply_app_settings(AppSettings())
+        self._save_app_settings(show_message=True)
+
+    def _on_close(self) -> None:
+        self._save_app_settings(show_message=False)
+        self.destroy()
 
     def _load_saved_profile(self) -> None:
         data = load_json()
@@ -875,6 +1242,9 @@ class ResumeAIApp(tk.Tk):
         self.output_text.insert("1.0", result)
         self.application_modified_var.set(datetime.now().isoformat(timespec="seconds"))
         self.status_var.set(f"Generated {request.document_type.lower()} and saved to {saved_path}")
+        self.application_package_exported = False
+        self.skipped_workflow_steps.discard("generate")
+        self._refresh_workflow_statuses()
         self._set_generating_state(False)
 
     def _fail_generation(self, exc: Exception) -> None:
@@ -933,9 +1303,55 @@ class ResumeAIApp(tk.Tk):
             job_fit_analysis=self._current_job_fit_analysis(),
         )
         preview = self.ai_service.build_prompt_preview(request)
-        self.output_text.delete("1.0", tk.END)
-        self.output_text.insert("1.0", preview)
-        self.status_var.set("Prompt preview placed in Output tab")
+        self._open_prompt_preview_window(preview, request.document_type)
+        self.status_var.set("Prompt preview opened")
+
+    def _open_prompt_preview_window(self, preview: str, document_type: str) -> None:
+        window = tk.Toplevel(self)
+        window.title(f"Prompt Preview - {document_type}")
+        window.geometry("900x700")
+        window.minsize(720, 520)
+        window.transient(self)
+
+        window.columnconfigure(0, weight=1)
+        window.rowconfigure(1, weight=1)
+
+        header = ttk.Frame(window, padding=(10, 10, 10, 6))
+        header.grid(row=0, column=0, sticky="ew")
+        header.columnconfigure(0, weight=1)
+        ttk.Label(
+            header,
+            text=f"Prompt preview for {document_type}",
+            font=("TkDefaultFont", 11, "bold"),
+        ).grid(row=0, column=0, sticky="w")
+        ttk.Label(
+            header,
+            text="This preview is not generated output. It shows what will be sent to the selected AI provider.",
+            wraplength=720,
+        ).grid(row=1, column=0, sticky="w", pady=(4, 0))
+
+        text_frame = ttk.Frame(window, padding=(10, 0, 10, 6))
+        text_frame.grid(row=1, column=0, sticky="nsew")
+        text_frame.columnconfigure(0, weight=1)
+        text_frame.rowconfigure(0, weight=1)
+
+        preview_text = tk.Text(text_frame, wrap="word")
+        preview_text.grid(row=0, column=0, sticky="nsew")
+        scrollbar = ttk.Scrollbar(text_frame, orient="vertical", command=preview_text.yview)
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        preview_text.configure(yscrollcommand=scrollbar.set)
+        preview_text.insert("1.0", preview)
+
+        buttons = ttk.Frame(window, padding=(10, 0, 10, 10))
+        buttons.grid(row=2, column=0, sticky="ew")
+
+        def copy_preview() -> None:
+            self.clipboard_clear()
+            self.clipboard_append(preview_text.get("1.0", tk.END).strip())
+            self.status_var.set("Prompt preview copied to clipboard")
+
+        ttk.Button(buttons, text="Copy Prompt", command=copy_preview).pack(side="left")
+        ttk.Button(buttons, text="Close", command=window.destroy).pack(side="right")
 
     def _current_job_fit_analysis(self) -> str:
         visible = getattr(self, "job_fit_text", None)
@@ -1002,6 +1418,8 @@ class ResumeAIApp(tk.Tk):
         self.job_fit_text.insert("1.0", self.last_job_fit_analysis_markdown)
         self.application_modified_var.set(datetime.now().isoformat(timespec="seconds"))
         self.status_var.set("Job fit analysis complete. Strategy will be used in the next generation prompt.")
+        self.skipped_workflow_steps.discard("job_fit")
+        self._refresh_workflow_statuses()
         self._set_job_fit_state(False)
 
     def _fail_job_fit_analysis(self, exc: Exception) -> None:
@@ -1081,6 +1499,8 @@ class ResumeAIApp(tk.Tk):
         self._render_quality_panel()
         self._store_current_quality_report()
         self.status_var.set(f"Quality check complete: {report.score}/100")
+        self.skipped_workflow_steps.discard("review")
+        self._refresh_workflow_statuses()
 
     def _run_ai_quality_review(self) -> None:
         content = self.output_text.get("1.0", tk.END).strip()
@@ -1130,6 +1550,8 @@ class ResumeAIApp(tk.Tk):
         self._render_quality_panel()
         self._store_current_quality_report()
         self.status_var.set("AI quality review complete")
+        self.skipped_workflow_steps.discard("review")
+        self._refresh_workflow_statuses()
         self._set_ai_review_state(False)
 
     def _fail_ai_quality_review(self, exc: Exception) -> None:
@@ -1433,7 +1855,7 @@ class ResumeAIApp(tk.Tk):
         company = self.application_company_var.get().strip()
         role = self.application_role_var.get().strip()
         if not company or not role:
-            messagebox.showwarning("Missing workspace metadata", "Fill Target company and Target role in the Workspace tab before exporting a package.")
+            messagebox.showwarning("Missing workspace metadata", "Fill Target company and Target role in the Workspace step before exporting a package.")
             return
 
         snapshot = self._collect_application_workspace_snapshot()
@@ -1453,6 +1875,11 @@ class ResumeAIApp(tk.Tk):
             self.status_var.set("Application package export failed")
             return
 
+        self.app_settings.last_export_dir = str(package_path.parent)
+        self._save_app_settings(show_message=False)
+        self.application_package_exported = True
+        self.skipped_workflow_steps.discard("export")
+        self._refresh_workflow_statuses()
         self.status_var.set(f"Application package exported to {package_path}")
         try:
             os.startfile(str(package_path))
@@ -1479,7 +1906,7 @@ class ResumeAIApp(tk.Tk):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_name = self._safe_filename(f"{self.last_document_type}_{self.last_candidate_name}_{timestamp}.pdf")
         path = filedialog.asksaveasfilename(
-            initialdir=EXPORT_DIR,
+            initialdir=self._export_dialog_initial_dir(),
             initialfile=safe_name,
             defaultextension=".pdf",
             filetypes=[("PDF files", "*.pdf")],
@@ -1542,13 +1969,13 @@ class ResumeAIApp(tk.Tk):
         selected = self.template_var.get()
         template = TEMPLATES.get(selected, TEMPLATES["ATS Friendly"])
         pdf_template = PDF_TEMPLATES.get(selected)
-        pdf_note = pdf_template.description if pdf_template else "PDF export also supports selectable layouts in the Output tab."
+        pdf_note = pdf_template.description if pdf_template else "PDF export also supports selectable layouts in the Export step."
         content = (
             f"{selected}\n\n"
             f"AI writing purpose: {template['description']}\n\n"
             f"AI writing tone: {template['tone']}\n\n"
             f"PDF layout: {pdf_note}\n\n"
-            "Use the template selector for writing style, then choose the PDF template in the Output tab before exporting."
+            "Use the template selector for writing style, then choose the PDF template in the Export step before exporting."
         )
         self.template_description.configure(state="normal")
         self.template_description.delete("1.0", tk.END)
