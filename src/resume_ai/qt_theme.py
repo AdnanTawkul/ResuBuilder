@@ -84,6 +84,26 @@ QComboBox QAbstractItemView {
     selection-background-color: #1d4ed8;
     border: 1px solid rgba(148, 163, 184, 0.24);
 }
+
+QListWidget {
+    background: #0b1424;
+    color: #eef5ff;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 14px;
+    padding: 8px;
+}
+QListWidget::item {
+    padding: 10px 12px;
+    border-radius: 10px;
+    margin: 3px;
+}
+QListWidget::item:selected {
+    background: rgba(59, 130, 246, 0.28);
+    color: #ffffff;
+}
+QListWidget::item:hover {
+    background: rgba(56, 189, 248, 0.10);
+}
 QPushButton {
     background: #172a46;
     color: #eef5ff;

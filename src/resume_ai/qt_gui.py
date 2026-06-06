@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -108,6 +109,8 @@ class ResuBuilderQtApp(QMainWindow):
         self.app_settings: AppSettings = load_app_settings()
         self.generated_cv = ""
         self.generated_covering_letter = ""
+        self.evidence_entries: list[dict[str, str]] = []
+        self._legacy_structured_evidence_text = ""
         self.current_workspace_path: Path | None = None
         self._generation_running = False
         self._generation_job_id = 0
@@ -145,7 +148,7 @@ class ResuBuilderQtApp(QMainWindow):
         file_menu.addAction(quit_action)
 
         workflow_menu = menu_bar.addMenu("Workflow")
-        for page_name in ["Welcome", "Workspace", "Profile", "Generate", "Review", "Export", "Settings"]:
+        for page_name in ["Welcome", "Workspace", "Profile", "Evidence", "Generate", "Review", "Export", "Settings"]:
             action = QAction(page_name, self)
             action.triggered.connect(lambda checked=False, name=page_name: self.show_page(name))
             workflow_menu.addAction(action)
@@ -177,7 +180,7 @@ class ResuBuilderQtApp(QMainWindow):
         sidebar_layout.addWidget(subtitle)
         sidebar_layout.addSpacing(20)
 
-        for page_name in ["Welcome", "Workspace", "Profile", "Generate", "Review", "Export", "Settings"]:
+        for page_name in ["Welcome", "Workspace", "Profile", "Evidence", "Generate", "Review", "Export", "Settings"]:
             button = QPushButton(page_name)
             button.setObjectName("NavButton")
             button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -198,6 +201,7 @@ class ResuBuilderQtApp(QMainWindow):
         self.pages["Welcome"] = self._build_welcome_page()
         self.pages["Workspace"] = self._build_workspace_page()
         self.pages["Profile"] = self._build_profile_page()
+        self.pages["Evidence"] = self._build_evidence_page()
         self.pages["Generate"] = self._build_generate_page()
         self.pages["Review"] = self._build_review_page()
         self.pages["Export"] = self._build_export_page()
@@ -267,8 +271,8 @@ class ResuBuilderQtApp(QMainWindow):
         card_row = QGridLayout()
         card_row.setSpacing(18)
         card_row.addWidget(Card("1. Profile", "Validate contact information and capture the candidate story."), 0, 0)
-        card_row.addWidget(Card("2. Generate", "Use Ollama or OpenAI through the existing AI service layer."), 0, 1)
-        card_row.addWidget(Card("3. Prove the UI", "Only after the prototype works do we wire review, export, and workspace logic."), 0, 2)
+        card_row.addWidget(Card("2. Evidence", "Structure projects, tools, methods, and outcomes before generation."), 0, 1)
+        card_row.addWidget(Card("3. Generate", "Use Ollama or OpenAI through the existing AI service layer."), 0, 2)
         layout.addLayout(card_row)
         layout.addStretch(1)
         return page
@@ -424,8 +428,8 @@ class ResuBuilderQtApp(QMainWindow):
         export_profile_button = QPushButton("Export Profile JSON")
         export_profile_button.clicked.connect(self._export_profile_json)
 
-        continue_button = QPushButton("Continue to Generate")
-        continue_button.clicked.connect(lambda: self.show_page("Generate"))
+        continue_button = QPushButton("Continue to Evidence")
+        continue_button.clicked.connect(lambda: self.show_page("Evidence"))
 
         action_row.addWidget(validate_button)
         action_row.addWidget(save_profile_button)
@@ -435,6 +439,125 @@ class ResuBuilderQtApp(QMainWindow):
         action_row.addWidget(continue_button)
         action_row.addStretch(1)
         content_layout.addLayout(action_row)
+
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
+        return page
+
+    def _build_evidence_page(self) -> QWidget:
+        page, layout = self._page_container(
+            "Evidence",
+            "Structure proof before generation. The AI performs better when projects are broken into tools, actions, outcomes, and job signals.",
+        )
+
+        scroll = QScrollArea()
+        scroll.setObjectName("PageScrollArea")
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        content = QWidget()
+        content.setObjectName("ScrollContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 14, 0)
+        content_layout.setSpacing(20)
+
+        builder_card = Card(
+            "Structured evidence builder",
+            "Add one block per project, role achievement, study, or technical proof. Do not invent unsupported metrics or technologies.",
+        )
+        builder_card.setMinimumHeight(520)
+
+        builder_grid = QGridLayout()
+        builder_grid.setHorizontalSpacing(20)
+        builder_grid.setVerticalSpacing(14)
+        builder_grid.setColumnStretch(0, 1)
+        builder_grid.setColumnStretch(1, 2)
+
+        self.evidence_list = QListWidget()
+        self.evidence_list.setMinimumHeight(360)
+        self.evidence_list.currentRowChanged.connect(self._load_selected_evidence)
+        builder_grid.addWidget(self.evidence_list, 0, 0, 8, 1)
+
+        self.evidence_type_combo = QComboBox()
+        self.evidence_type_combo.addItems(["Project", "Work achievement", "Study", "Certification", "Other"])
+        self.evidence_title_edit = QLineEdit()
+        self.evidence_title_edit.setPlaceholderText("Example: Face-Aware FlowMag for Micro-Expression Spotting")
+        self.evidence_context_edit = QTextEdit()
+        self.evidence_context_edit.setMinimumHeight(90)
+        self.evidence_context_edit.setPlaceholderText("What was the situation or problem?")
+        self.evidence_tools_edit = QLineEdit()
+        self.evidence_tools_edit.setPlaceholderText("Python, PyTorch, optical flow, CASME II, LBP-TOP, SVM")
+        self.evidence_methods_edit = QTextEdit()
+        self.evidence_methods_edit.setMinimumHeight(100)
+        self.evidence_methods_edit.setPlaceholderText("What did you actually do?")
+        self.evidence_outcome_edit = QTextEdit()
+        self.evidence_outcome_edit.setMinimumHeight(90)
+        self.evidence_outcome_edit.setPlaceholderText("What did it enable, improve, validate, or prove?")
+        self.evidence_metrics_edit = QLineEdit()
+        self.evidence_metrics_edit.setPlaceholderText("Repository, report, benchmark, validation result, measurable metric if truthful")
+        self.evidence_signals_edit = QLineEdit()
+        self.evidence_signals_edit.setPlaceholderText("computer vision, deep learning, model training, algorithms, validation")
+
+        for widget in (
+            self.evidence_type_combo,
+            self.evidence_title_edit,
+            self.evidence_context_edit,
+            self.evidence_tools_edit,
+            self.evidence_methods_edit,
+            self.evidence_outcome_edit,
+            self.evidence_metrics_edit,
+            self.evidence_signals_edit,
+        ):
+            self._prepare_form_control(widget, min_width=560)
+
+        self._add_labeled_field(builder_grid, 0, 1, "Evidence type", self.evidence_type_combo)
+        self._add_labeled_field(builder_grid, 1, 1, "Title", self.evidence_title_edit)
+        self._add_labeled_field(builder_grid, 2, 1, "Context / situation", self.evidence_context_edit)
+        self._add_labeled_field(builder_grid, 3, 1, "Tools / technologies", self.evidence_tools_edit)
+        self._add_labeled_field(builder_grid, 4, 1, "Methods / actions", self.evidence_methods_edit)
+        self._add_labeled_field(builder_grid, 5, 1, "Outcome / purpose", self.evidence_outcome_edit)
+        self._add_labeled_field(builder_grid, 6, 1, "Metrics / proof", self.evidence_metrics_edit)
+        self._add_labeled_field(builder_grid, 7, 1, "Relevant job signals", self.evidence_signals_edit)
+        builder_card.layout.addLayout(builder_grid)
+
+        actions = QHBoxLayout()
+        actions.setSpacing(12)
+        add_button = QPushButton("Add Evidence")
+        add_button.setObjectName("PrimaryButton")
+        add_button.clicked.connect(self._add_evidence_entry)
+        update_button = QPushButton("Update Selected")
+        update_button.clicked.connect(self._update_selected_evidence)
+        delete_button = QPushButton("Delete Selected")
+        delete_button.clicked.connect(self._delete_selected_evidence)
+        clear_button = QPushButton("Clear Form")
+        clear_button.clicked.connect(self._clear_evidence_form)
+        example_button = QPushButton("Load Example")
+        example_button.clicked.connect(self._load_evidence_example)
+        continue_button = QPushButton("Continue to Generate")
+        continue_button.clicked.connect(lambda: self.show_page("Generate"))
+        for button in (add_button, update_button, delete_button, clear_button, example_button, continue_button):
+            button.setMinimumHeight(46)
+            actions.addWidget(button)
+        actions.addStretch(1)
+        builder_card.layout.addLayout(actions)
+        content_layout.addWidget(builder_card)
+
+        preview_card = QFrame()
+        preview_card.setObjectName("OutputCard")
+        preview_layout = QVBoxLayout(preview_card)
+        preview_layout.setContentsMargins(22, 20, 22, 20)
+        preview_layout.setSpacing(12)
+        preview_title = QLabel("Evidence prompt preview")
+        preview_title.setObjectName("CardTitle")
+        self.evidence_preview_edit = QPlainTextEdit()
+        self.evidence_preview_edit.setReadOnly(True)
+        self.evidence_preview_edit.setMinimumHeight(260)
+        self.evidence_preview_edit.setPlainText("No structured evidence yet. Add evidence blocks before generation.")
+        preview_layout.addWidget(preview_title)
+        preview_layout.addWidget(self.evidence_preview_edit, 1)
+        content_layout.addWidget(preview_card)
+        content_layout.addStretch(1)
 
         scroll.setWidget(content)
         layout.addWidget(scroll, 1)
@@ -807,6 +930,8 @@ class ResuBuilderQtApp(QMainWindow):
             "source": "PySide6 experiment",
             "metadata": metadata,
             "profile": self._profile_to_dict(),
+            "structured_evidence_entries": [dict(entry) for entry in self.evidence_entries],
+            "structured_evidence": self._structured_evidence_text(),
             "job_description": self.job_description_edit.toPlainText().strip() if hasattr(self, "job_description_edit") else "",
             "generated_cv": self.generated_cv,
             "generated_covering_letter": self.generated_covering_letter,
@@ -841,6 +966,7 @@ class ResuBuilderQtApp(QMainWindow):
             f"Workspace file: {path_text}\n\n"
             f"CV generated: {'yes' if self.generated_cv.strip() else 'no'}\n"
             f"Covering letter generated: {'yes' if self.generated_covering_letter.strip() else 'no'}\n"
+            f"Structured evidence blocks: {len(self.evidence_entries)}\n"
             f"Quality report: {'yes' if self._quality_report_text() != 'No quality report exported from the Qt experiment.' else 'no'}"
         )
 
@@ -943,7 +1069,17 @@ class ResuBuilderQtApp(QMainWindow):
         self.workspace_name_edit.setText(str(metadata.get("application_name", "") or ""))
         self.workspace_company_edit.setText(str(metadata.get("target_company", "") or ""))
         self.workspace_role_edit.setText(str(metadata.get("target_role", "") or ""))
-        self._apply_profile_data(snapshot.get("profile") or {})
+        profile_data = dict(snapshot.get("profile") or {})
+        # Qt workspaces now store evidence both inside the profile and at the top level.
+        # The top-level copy is deliberate: it makes workspace load robust even if an older
+        # profile serializer drops unknown fields. It also lets us recover evidence from
+        # workspaces created during the PySide6 experiment.
+        top_level_entries = snapshot.get("structured_evidence_entries")
+        if top_level_entries and not profile_data.get("structured_evidence_entries"):
+            profile_data["structured_evidence_entries"] = top_level_entries
+        if snapshot.get("structured_evidence") and not profile_data.get("structured_evidence"):
+            profile_data["structured_evidence"] = snapshot.get("structured_evidence")
+        self._apply_profile_data(profile_data)
         self.job_description_edit.setPlainText(str(snapshot.get("job_description", "") or ""))
         self.generated_cv = str(snapshot.get("generated_cv", "") or "")
         self.generated_covering_letter = str(snapshot.get("generated_covering_letter", "") or "")
@@ -981,6 +1117,147 @@ class ResuBuilderQtApp(QMainWindow):
         if hasattr(self, "export_role_edit") and role and (not force_empty_only or not self.export_role_edit.text().strip()):
             self.export_role_edit.setText(role)
 
+    def _evidence_form_to_dict(self) -> dict[str, str]:
+        return {
+            "type": self.evidence_type_combo.currentText().strip() if hasattr(self, "evidence_type_combo") else "Project",
+            "title": self.evidence_title_edit.text().strip() if hasattr(self, "evidence_title_edit") else "",
+            "context": self.evidence_context_edit.toPlainText().strip() if hasattr(self, "evidence_context_edit") else "",
+            "tools": self.evidence_tools_edit.text().strip() if hasattr(self, "evidence_tools_edit") else "",
+            "methods": self.evidence_methods_edit.toPlainText().strip() if hasattr(self, "evidence_methods_edit") else "",
+            "outcome": self.evidence_outcome_edit.toPlainText().strip() if hasattr(self, "evidence_outcome_edit") else "",
+            "metrics": self.evidence_metrics_edit.text().strip() if hasattr(self, "evidence_metrics_edit") else "",
+            "signals": self.evidence_signals_edit.text().strip() if hasattr(self, "evidence_signals_edit") else "",
+        }
+
+    def _evidence_title_for_list(self, entry: dict[str, str]) -> str:
+        title = (entry.get("title") or "Untitled evidence").strip()
+        entry_type = (entry.get("type") or "Evidence").strip()
+        signals = (entry.get("signals") or "").strip()
+        if signals:
+            first_signal = signals.split(",")[0].strip()
+            if first_signal:
+                return f"{entry_type}: {title}  ·  {first_signal}"
+        return f"{entry_type}: {title}"
+
+    def _refresh_evidence_list(self) -> None:
+        if not hasattr(self, "evidence_list"):
+            return
+        current_row = self.evidence_list.currentRow()
+        self.evidence_list.blockSignals(True)
+        self.evidence_list.clear()
+        for entry in self.evidence_entries:
+            self.evidence_list.addItem(self._evidence_title_for_list(entry))
+        self.evidence_list.blockSignals(False)
+        if self.evidence_entries:
+            self.evidence_list.setCurrentRow(min(max(current_row, 0), len(self.evidence_entries) - 1))
+        self._refresh_evidence_preview()
+
+    def _refresh_evidence_preview(self) -> None:
+        if not hasattr(self, "evidence_preview_edit"):
+            return
+        text = self._structured_evidence_text()
+        self.evidence_preview_edit.setPlainText(text or "No structured evidence yet. Add evidence blocks before generation.")
+
+    def _structured_evidence_text(self) -> str:
+        if self.evidence_entries:
+            blocks: list[str] = []
+            for index, entry in enumerate(self.evidence_entries, start=1):
+                blocks.append(
+                    f"Evidence {index}: {entry.get('title', '').strip() or 'Untitled evidence'}\n"
+                    f"Type: {entry.get('type', '').strip()}\n"
+                    f"Context / situation: {entry.get('context', '').strip()}\n"
+                    f"Tools / technologies: {entry.get('tools', '').strip()}\n"
+                    f"Methods / actions: {entry.get('methods', '').strip()}\n"
+                    f"Outcome / purpose: {entry.get('outcome', '').strip()}\n"
+                    f"Metrics / proof: {entry.get('metrics', '').strip()}\n"
+                    f"Relevant job signals: {entry.get('signals', '').strip()}"
+                )
+            return "\n\n---\n\n".join(blocks).strip()
+        return self._legacy_structured_evidence_text.strip()
+
+    def _set_evidence_form(self, entry: dict[str, str]) -> None:
+        if not hasattr(self, "evidence_title_edit"):
+            return
+        self.evidence_type_combo.setCurrentText(str(entry.get("type", "Project") or "Project"))
+        self.evidence_title_edit.setText(str(entry.get("title", "") or ""))
+        self.evidence_context_edit.setPlainText(str(entry.get("context", "") or ""))
+        self.evidence_tools_edit.setText(str(entry.get("tools", "") or ""))
+        self.evidence_methods_edit.setPlainText(str(entry.get("methods", "") or ""))
+        self.evidence_outcome_edit.setPlainText(str(entry.get("outcome", "") or ""))
+        self.evidence_metrics_edit.setText(str(entry.get("metrics", "") or ""))
+        self.evidence_signals_edit.setText(str(entry.get("signals", "") or ""))
+
+    def _clear_evidence_form(self) -> None:
+        if not hasattr(self, "evidence_title_edit"):
+            return
+        self.evidence_type_combo.setCurrentIndex(0)
+        self.evidence_title_edit.clear()
+        self.evidence_context_edit.clear()
+        self.evidence_tools_edit.clear()
+        self.evidence_methods_edit.clear()
+        self.evidence_outcome_edit.clear()
+        self.evidence_metrics_edit.clear()
+        self.evidence_signals_edit.clear()
+
+    def _load_selected_evidence(self, row: int) -> None:
+        if row < 0 or row >= len(self.evidence_entries):
+            return
+        self._set_evidence_form(self.evidence_entries[row])
+
+    def _add_evidence_entry(self) -> None:
+        entry = self._evidence_form_to_dict()
+        if not entry.get("title"):
+            QMessageBox.warning(self, "Cannot add evidence", "Evidence title is required.")
+            return
+        if not (entry.get("tools") or entry.get("methods") or entry.get("outcome")):
+            QMessageBox.warning(self, "Cannot add evidence", "Add tools, methods, or outcome so the evidence is useful for generation.")
+            return
+        self.evidence_entries.append(entry)
+        self._legacy_structured_evidence_text = ""
+        self._refresh_evidence_list()
+        self.evidence_list.setCurrentRow(len(self.evidence_entries) - 1)
+        self._update_workspace_status("Structured evidence added. Save the workspace to preserve it.")
+
+    def _update_selected_evidence(self) -> None:
+        row = self.evidence_list.currentRow() if hasattr(self, "evidence_list") else -1
+        if row < 0 or row >= len(self.evidence_entries):
+            QMessageBox.information(self, "No evidence selected", "Select an evidence block before updating.")
+            return
+        entry = self._evidence_form_to_dict()
+        if not entry.get("title"):
+            QMessageBox.warning(self, "Cannot update evidence", "Evidence title is required.")
+            return
+        self.evidence_entries[row] = entry
+        self._legacy_structured_evidence_text = ""
+        self._refresh_evidence_list()
+        self.evidence_list.setCurrentRow(row)
+        self._update_workspace_status("Structured evidence updated. Save the workspace to preserve it.")
+
+    def _delete_selected_evidence(self) -> None:
+        row = self.evidence_list.currentRow() if hasattr(self, "evidence_list") else -1
+        if row < 0 or row >= len(self.evidence_entries):
+            QMessageBox.information(self, "No evidence selected", "Select an evidence block before deleting.")
+            return
+        del self.evidence_entries[row]
+        self._clear_evidence_form()
+        self._refresh_evidence_list()
+        self._update_workspace_status("Structured evidence deleted. Save the workspace to preserve the change.")
+
+    def _load_evidence_example(self) -> None:
+        self._set_evidence_form(
+            {
+                "type": "Project",
+                "title": "Face-Aware FlowMag for Micro-Expression Spotting",
+                "context": "Research-engineering project adapting self-supervised motion magnification to subtle facial micro-expression spotting on CASME II.",
+                "tools": "Python, PyTorch, optical flow, CASME II, facial landmark masks, LBP-TOP, SVM",
+                "methods": "Fine-tuned a pretrained FlowMag-style motion magnification model, added face-aware regularization with landmark-based masks, compared baseline inference, test-time adaptation, and face-aware training variants.",
+                "outcome": "Produced a more spatially meaningful facial motion amplification pipeline and supported downstream micro-expression evaluation through motion analysis and feature-based classification.",
+                "metrics": "Research repository, loss formulation, baseline comparison, motion error analysis, downstream LBP-TOP + SVM evaluation workflow.",
+                "signals": "computer vision, deep learning, optical flow, model adaptation, transfer learning, algorithms, validation, neural engineering",
+            }
+        )
+        QMessageBox.information(self, "Example loaded", "Example evidence loaded into the form. Review it, edit it, then click Add Evidence.")
+
     def _build_profile(self) -> CandidateProfile:
         return CandidateProfile(
             name=self.name_edit.text().strip(),
@@ -992,6 +1269,7 @@ class ResuBuilderQtApp(QMainWindow):
             skills=self.skills_edit.toPlainText().strip(),
             projects=self.projects_edit.toPlainText().strip(),
             professions=self.professions_edit.toPlainText().strip(),
+            structured_evidence=self._structured_evidence_text(),
         )
 
     def _validate_profile(self) -> tuple[bool, str]:
@@ -1013,11 +1291,36 @@ class ResuBuilderQtApp(QMainWindow):
         else:
             QMessageBox.warning(self, "Profile validation", message)
 
-    def _profile_to_dict(self) -> dict[str, str]:
+    def _profile_to_dict(self) -> dict:
         profile = self._build_profile()
         if hasattr(profile, "to_dict"):
-            return profile.to_dict()
-        return dict(profile.__dict__)
+            data = profile.to_dict()
+        else:
+            data = dict(profile.__dict__)
+        data["structured_evidence"] = self._structured_evidence_text()
+        data["structured_evidence_entries"] = self.evidence_entries
+        return data
+
+    def _normalize_evidence_entries(self, raw_entries: object) -> list[dict[str, str]]:
+        if not isinstance(raw_entries, list):
+            return []
+        normalized: list[dict[str, str]] = []
+        for raw_entry in raw_entries:
+            if not isinstance(raw_entry, dict):
+                continue
+            normalized.append(
+                {
+                    "type": str(raw_entry.get("type", "Project") or "Project"),
+                    "title": str(raw_entry.get("title", "") or ""),
+                    "context": str(raw_entry.get("context", "") or ""),
+                    "tools": str(raw_entry.get("tools", "") or ""),
+                    "methods": str(raw_entry.get("methods", "") or ""),
+                    "outcome": str(raw_entry.get("outcome", "") or ""),
+                    "metrics": str(raw_entry.get("metrics", "") or ""),
+                    "signals": str(raw_entry.get("signals", "") or ""),
+                }
+            )
+        return normalized
 
     def _apply_profile_data(self, data: dict) -> None:
         self.name_edit.setText(str(data.get("name", "") or ""))
@@ -1029,6 +1332,15 @@ class ResuBuilderQtApp(QMainWindow):
         self.skills_edit.setPlainText(str(data.get("skills", "") or ""))
         self.projects_edit.setPlainText(str(data.get("projects", "") or ""))
         self.professions_edit.setPlainText(str(data.get("professions", "") or ""))
+        self.evidence_entries = self._normalize_evidence_entries(data.get("structured_evidence_entries") or [])
+        self._legacy_structured_evidence_text = str(data.get("structured_evidence", "") or "")
+        if hasattr(self, "evidence_list"):
+            self._refresh_evidence_list()
+            if not self.evidence_entries:
+                self._clear_evidence_form()
+                self._refresh_evidence_preview()
+            else:
+                self.evidence_list.setCurrentRow(0)
 
     def _save_current_profile(self) -> None:
         ok, message = self._validate_profile()

@@ -15,6 +15,9 @@ Working in the Qt prototype:
 - Telephone number-only validation
 - Save/load local profile from `data/candidate_profile.json`
 - Import/export profile JSON for faster testing
+- Structured Evidence Builder page
+- Structured evidence saved inside profiles and workspaces
+- Structured evidence included in generation through the existing backend profile model
 - Save/load complete application workspace JSON files
 - File menu actions for workspace new/load/save/save-as
 - Generate CV
@@ -30,7 +33,6 @@ Working in the Qt prototype:
 
 Still placeholder or partial:
 
-- Structured Evidence Builder
 - Job Fit Analyzer
 - AI Quality Review
 - Improve with Quality Fixes
@@ -57,6 +59,16 @@ Use the Profile page buttons:
 4. Click **Load Saved Profile**.
 
 You can also use **Import Profile JSON** and **Export Profile JSON** to move test profiles around without retyping them.
+
+## Evidence Builder workflow
+
+1. Open **Evidence**.
+2. Add one evidence block per project, role achievement, study, or technical proof.
+3. Fill tools, methods, outcome, proof, and relevant job signals.
+4. Click **Add Evidence**.
+5. Save the profile or workspace so the evidence persists.
+
+Good evidence is specific. Bad evidence is vague. Do not add fake metrics or unsupported technologies just to improve a score.
 
 ## Export page layout
 
@@ -85,25 +97,18 @@ data/logs/qt_gui.log
 
 Do not merge this branch into `main` until the Qt interface reaches feature parity with the existing GUI.
 
+## Step 24J, Qt Evidence Builder
 
-## Step 24G, Qt scrollbar and background cleanup
-
-- Fixed dark-blue scroll area background bleed that appeared as brown gaps between cards.
-- Restyled vertical and horizontal scrollbars with wider, higher-contrast handles.
-- Applied consistent page and scroll-content backgrounds across Profile and Export.
-
-## Step 24H, Generate page scroll layout cleanup
-
-- Made the Generate page scrollable, matching the Profile and Export pages.
-- Rebuilt generation controls into a grid so the document selector, template selector, and button are not clipped at the default window size.
-- Increased Job Description and Generated Output field height.
-- Kept generation logic unchanged. This is a layout-only fix.
+- Added a dedicated Evidence page to the Qt sidebar.
+- Added structured evidence fields for type, title, context, tools, methods, outcome, proof, and job signals.
+- Added Add, Update, Delete, Clear, and Load Example actions.
+- Added evidence prompt preview.
+- Saves structured evidence into profile JSON and workspace JSON.
+- Includes structured evidence in the `CandidateProfile` passed to the existing generation backend.
 
 
-## Step 24I, Qt workspace save/load
+## Step 24K - Qt evidence workspace restore fix
 
-- Added a Workspace page to the Qt sidebar.
-- Added File menu actions for New, Load, Save, and Save As application workspace.
-- Saves profile, job description, generated CV, generated covering letter, quality report, export settings, and workspace metadata.
-- Loads workspace JSON files back into the Qt experiment without retyping the profile.
-- Keeps old Tk/CustomTkinter app untouched.
+- Stores structured evidence entries explicitly in Qt workspace snapshots.
+- Restores evidence from both profile-level and top-level workspace fields.
+- Shows structured evidence block count in the workspace status panel.
