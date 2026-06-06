@@ -83,6 +83,152 @@ class AIService:
             f"USER INPUT\n\n{user_input}"
         )
 
+    def analyze_job_fit(
+        self,
+        profile,
+        job_description: str,
+        settings: AISettings,
+        target_company: str = "",
+        target_role: str = "",
+    ) -> str:
+        """Uses Ollama to analyze fit before generation so the app does not write blind drafts."""
+        if not settings.use_ai:
+            return "Job fit analysis failed: AI is disabled in the AI Settings tab."
+
+        job_signals = extract_job_keywords(job_description, limit=28)
+        supported_signals, unsupported_signals = split_keywords_by_candidate_evidence(job_signals, profile)
+        evidence_map = self._build_evidence_map(profile, job_signals)
+        truth_aware_signal_report = build_truth_aware_signal_report(profile, job_description, limit=28)
+
+        instructions = """
+/no_think
+You are a strict job-fit strategist for CV and covering-letter generation.
+Use Ollama/local reasoning to compare the candidate evidence against the target job before any document is generated.
+Output clean Markdown only. Do not wrap the answer in code fences.
+Do not reveal chain-of-thought, hidden reasoning, thinking notes, analysis notes, or implementation details.
+
+Hard rules:
+1. Never invent experience, clients, employers, metrics, tools, publications, degrees, dates, or achievements.
+2. Separate strong alignment from weak alignment and unsupported gaps.
+3. Do not recommend adding a job keyword unless the candidate evidence supports it.
+4. Be blunt when the job is a weak fit.
+5. Give practical generation strategy for both the CV and covering letter.
+6. Include a fit score from 0 to 100 based on truthful evidence, not optimism.
+
+Required Markdown structure:
+# Job Fit Analysis
+
+**Fit Score:** NN/100
+**Verdict:** one direct sentence
+
+## Strong alignment
+- supported signal: evidence source
+
+## Weak alignment
+- weak signal: what evidence is thin or indirect
+
+## Unsupported or risky claims
+- signal: do not claim this unless new evidence is added
+
+## Recommended CV strategy
+- how to position the CV truthfully
+
+## Recommended covering letter strategy
+- how to position the covering letter truthfully
+
+## Evidence gaps to fill
+- exact evidence the user should add to improve fit
+
+## Generation instructions
+- concise instructions that the CV/covering-letter generator should follow
+""".strip()
+
+        user_input = f"""
+TARGET COMPANY:
+{target_company or "Not specified"}
+
+TARGET ROLE:
+{target_role or profile.title or "Not specified"}
+
+CANDIDATE DETAILS:
+Name: {profile.name}
+Current or target title: {profile.title}
+Location: {profile.location}
+
+Professional summary:
+{profile.summary}
+
+Studies / education:
+{profile.studies}
+
+Professions / work experience:
+{profile.professions}
+
+Projects:
+{profile.projects}
+
+Skills:
+{profile.skills}
+
+Languages:
+{profile.languages}
+
+Structured evidence:
+{getattr(profile, "structured_evidence", "")}
+
+Existing CV:
+{profile.general_cv}
+
+Existing covering letter:
+{profile.general_cover_letter or profile.general_resume}
+
+EXTRACTED JOB SIGNALS:
+{', '.join(job_signals) if job_signals else 'No strong job signals detected.'}
+
+SUPPORTED SIGNALS FROM CURRENT EVIDENCE:
+{', '.join(supported_signals) if supported_signals else 'None clearly supported yet.'}
+
+UNSUPPORTED SIGNALS FROM CURRENT EVIDENCE:
+{', '.join(unsupported_signals) if unsupported_signals else 'None clearly unsupported.'}
+
+TRUTH-AWARE SIGNAL REPORT:
+{truth_aware_signal_report}
+
+EVIDENCE MAP:
+{evidence_map}
+
+TARGET JOB DESCRIPTION:
+{job_description}
+""".strip()
+
+        # This feature intentionally uses Ollama. If the user selected OpenAI elsewhere, job-fit analysis still runs locally.
+        ollama_settings = AISettings(
+            use_ai=settings.use_ai,
+            provider=self.PROVIDER_OLLAMA,
+            api_key="",
+            model=settings.model,
+            generation_mode=settings.generation_mode,
+            ollama_base_url=settings.ollama_base_url,
+            ollama_model=settings.ollama_model or self.DEFAULT_OLLAMA_MODEL,
+            timeout_seconds=settings.timeout_seconds,
+        )
+        try:
+            response = self._call_ollama_chat(
+                settings=ollama_settings,
+                messages=[
+                    {"role": "system", "content": instructions},
+                    {"role": "user", "content": user_input},
+                ],
+                timeout=float(settings.timeout_seconds or 180),
+                num_predict=2400,
+            )
+            text = self._extract_ollama_text(response).strip()
+            if not text:
+                return "Ollama returned an empty job fit analysis. Add more evidence or try again."
+            return self._clean_local_model_output(text)
+        except Exception as exc:
+            return f"Ollama job fit analysis failed: {exc}"
+
     def review_document(self, request: GenerationRequest, generated_document: str, heuristic_report: str) -> str:
         settings = request.ai_settings
         if not settings.use_ai:
@@ -502,6 +648,9 @@ Truth-aware signal report:
 Candidate evidence map:
 {evidence_map}
 
+Job fit analysis and generation strategy:
+{request.job_fit_analysis.strip() or 'No pre-generation job fit analysis supplied. Generate from the truth-aware signal report and candidate evidence.'}
+
 Template style: {request.template_name}
 Template purpose: {template['description']}
 Tone: {template['tone']}
@@ -560,6 +709,9 @@ TRUTH-AWARE SIGNAL REPORT:
 
 EVIDENCE MAP:
 {evidence_map}
+
+JOB FIT ANALYSIS / GENERATION STRATEGY:
+{request.job_fit_analysis.strip() or 'No job fit analysis supplied.'}
 
 PRIMARY EXISTING SOURCE DOCUMENT:
 {source_document}
@@ -653,6 +805,9 @@ TRUTH-AWARE SIGNAL REPORT:
 
 EVIDENCE MAP:
 {evidence_map}
+
+JOB FIT ANALYSIS / GENERATION STRATEGY:
+{request.job_fit_analysis.strip() or 'No job fit analysis supplied.'}
 
 PRIMARY EXISTING SOURCE DOCUMENT:
 {source_document}
@@ -779,6 +934,9 @@ TRUTH-AWARE SIGNAL REPORT:
 
 EVIDENCE MAP:
 {evidence_map}
+
+JOB FIT ANALYSIS / GENERATION STRATEGY:
+{request.job_fit_analysis.strip() or 'No job fit analysis supplied.'}
 
 PRIMARY EXISTING SOURCE DOCUMENT:
 {source_document}

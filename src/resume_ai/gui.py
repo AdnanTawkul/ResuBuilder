@@ -84,6 +84,7 @@ class ResumeAIApp(tk.Tk):
         self.generated_covering_letter_markdown = ""
         self.cv_quality_report_markdown = ""
         self.covering_letter_quality_report_markdown = ""
+        self.last_job_fit_analysis_markdown = ""
 
         default_ai_settings = self.ai_service.get_default_settings()
         self.ai_enabled_var = tk.BooleanVar(value=default_ai_settings.use_ai)
@@ -107,6 +108,7 @@ class ResumeAIApp(tk.Tk):
         self.improvement_buttons: list[ttk.Button] = []
         self.ai_review_buttons: list[ttk.Button] = []
         self.quality_check_buttons: list[ttk.Button] = []
+        self.job_fit_buttons: list[ttk.Button] = []
 
         self._build_ui()
         self._load_saved_profile()
@@ -122,6 +124,7 @@ class ResumeAIApp(tk.Tk):
         personal_tab = ttk.Frame(notebook, padding=12)
         evidence_tab = ttk.Frame(notebook, padding=12)
         job_tab = ttk.Frame(notebook, padding=12)
+        job_fit_tab = ttk.Frame(notebook, padding=12)
         source_tab = ttk.Frame(notebook, padding=12)
         template_tab = ttk.Frame(notebook, padding=12)
         ai_tab = ttk.Frame(notebook, padding=12)
@@ -132,6 +135,7 @@ class ResumeAIApp(tk.Tk):
         notebook.add(personal_tab, text="Personal Info")
         notebook.add(evidence_tab, text="Evidence Builder")
         notebook.add(job_tab, text="Job Description")
+        notebook.add(job_fit_tab, text="Job Fit Analyzer")
         notebook.add(source_tab, text="Existing CV / Covering Letter")
         notebook.add(template_tab, text="Templates")
         notebook.add(ai_tab, text="AI Settings")
@@ -142,6 +146,7 @@ class ResumeAIApp(tk.Tk):
         self._build_personal_tab(personal_tab)
         self._build_evidence_tab(evidence_tab)
         self._build_job_tab(job_tab)
+        self._build_job_fit_tab(job_fit_tab)
         self._build_source_tab(source_tab)
         self._build_template_tab(template_tab)
         self._build_ai_tab(ai_tab)
@@ -361,6 +366,32 @@ class ResumeAIApp(tk.Tk):
         ttk.Button(button_frame, text="Load Job Description from PDF/Text", command=lambda: self._load_file_into_text(self.job_description_text)).pack(side="left")
         ttk.Button(button_frame, text="Clear", command=lambda: self._clear_text(self.job_description_text)).pack(side="left", padx=8)
 
+    def _build_job_fit_tab(self, parent: ttk.Frame) -> None:
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(2, weight=1)
+
+        intro = (
+            "Analyze the job before generating documents. This uses Ollama locally to decide which job signals are supported, "
+            "which are weak, and which must not be claimed without more evidence."
+        )
+        ttk.Label(parent, text=intro, wraplength=980).grid(row=0, column=0, sticky="w", pady=(0, 8))
+
+        buttons = ttk.Frame(parent)
+        buttons.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        analyze_button = ttk.Button(buttons, text="Analyze Job Fit with Ollama", command=self._run_job_fit_analysis)
+        analyze_button.pack(side="left")
+        ttk.Button(buttons, text="Use Analysis in Next Generation", command=self._use_visible_job_fit_analysis).pack(side="left", padx=8)
+        ttk.Button(buttons, text="Clear Job Fit Analysis", command=self._clear_job_fit_analysis).pack(side="left")
+        self.job_fit_buttons = [analyze_button]
+
+        self.job_fit_text = tk.Text(parent, wrap="word")
+        self.job_fit_text.grid(row=2, column=0, sticky="nsew")
+        self.job_fit_text.insert(
+            "1.0",
+            "Run the analyzer after adding the job description and structured evidence. "
+            "The resulting strategy will be included automatically in CV and covering-letter generation prompts.",
+        )
+
     def _build_source_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(0, weight=1)
         parent.columnconfigure(1, weight=1)
@@ -576,6 +607,7 @@ class ResumeAIApp(tk.Tk):
                 "ai_review_markdown": self.last_ai_review_markdown,
                 "cv_quality_report_markdown": self.cv_quality_report_markdown,
                 "covering_letter_quality_report_markdown": self.covering_letter_quality_report_markdown,
+                "job_fit_analysis_markdown": self.last_job_fit_analysis_markdown,
             },
         }
 
@@ -641,6 +673,17 @@ class ResumeAIApp(tk.Tk):
         self.last_quality_report_markdown = documents.get("quality_report_markdown", "")
         self.last_quality_heuristic_markdown = documents.get("quality_heuristic_markdown", "")
         self.last_ai_review_markdown = documents.get("ai_review_markdown", "")
+        self.last_job_fit_analysis_markdown = documents.get("job_fit_analysis_markdown", "")
+        if hasattr(self, "job_fit_text"):
+            self.job_fit_text.delete("1.0", tk.END)
+            if self.last_job_fit_analysis_markdown.strip():
+                self.job_fit_text.insert("1.0", self.last_job_fit_analysis_markdown)
+            else:
+                self.job_fit_text.insert(
+                    "1.0",
+                    "Run the analyzer after adding the job description and structured evidence. "
+                    "The resulting strategy will be included automatically in CV and covering-letter generation prompts.",
+                )
 
         self.output_text.delete("1.0", tk.END)
         self.output_text.insert("1.0", legacy_output)
@@ -679,6 +722,7 @@ class ResumeAIApp(tk.Tk):
         self.generated_covering_letter_markdown = ""
         self.cv_quality_report_markdown = ""
         self.covering_letter_quality_report_markdown = ""
+        self._clear_job_fit_analysis()
         self.status_var.set("New application workspace ready")
 
     def _save_application_workspace(self, save_as: bool = False) -> None:
@@ -798,6 +842,7 @@ class ResumeAIApp(tk.Tk):
             template_name=self.template_var.get(),
             document_type=document_type,
             ai_settings=self._collect_ai_settings(),
+            job_fit_analysis=self._current_job_fit_analysis(),
         )
         self.status_var.set(f"Generating tailored {document_type.lower()}...")
         self._set_generating_state(True)
@@ -847,6 +892,8 @@ class ResumeAIApp(tk.Tk):
             button.configure(state=state)
         for button in getattr(self, "quality_check_buttons", []):
             button.configure(state=state)
+        for button in getattr(self, "job_fit_buttons", []):
+            button.configure(state=state)
 
     def _set_ai_review_state(self, is_running: bool) -> None:
         state = "disabled" if is_running else "normal"
@@ -883,11 +930,111 @@ class ResumeAIApp(tk.Tk):
             template_name=self.template_var.get(),
             document_type=self.prompt_preview_type_var.get(),
             ai_settings=self._collect_ai_settings(),
+            job_fit_analysis=self._current_job_fit_analysis(),
         )
         preview = self.ai_service.build_prompt_preview(request)
         self.output_text.delete("1.0", tk.END)
         self.output_text.insert("1.0", preview)
         self.status_var.set("Prompt preview placed in Output tab")
+
+    def _current_job_fit_analysis(self) -> str:
+        visible = getattr(self, "job_fit_text", None)
+        if visible is not None:
+            text = visible.get("1.0", tk.END).strip()
+            placeholder = "Run the analyzer after adding the job description"
+            if text and placeholder not in text:
+                return text
+        return self.last_job_fit_analysis_markdown.strip()
+
+    def _run_job_fit_analysis(self) -> None:
+        profile = self._collect_profile()
+        job_description = self.job_description_text.get("1.0", tk.END).strip()
+        if not job_description:
+            messagebox.showwarning("Missing job description", "Paste the job description before analyzing job fit.")
+            return
+        if not any([profile.summary, profile.professions, profile.projects, profile.skills, getattr(profile, "structured_evidence", ""), profile.general_cv]):
+            messagebox.showwarning(
+                "Missing candidate evidence",
+                "Add profile details or structured evidence before analyzing job fit. Otherwise Ollama has nothing useful to compare.",
+            )
+            return
+
+        settings = self._collect_ai_settings()
+        provider = AIService.PROVIDER_OLLAMA
+        model = settings.ollama_model.strip() or AIService.DEFAULT_OLLAMA_MODEL
+        self.last_job_fit_analysis_markdown = ""
+        self.job_fit_text.delete("1.0", tk.END)
+        self.job_fit_text.insert(
+            "1.0",
+            "# Job Fit Analysis Running\n\n"
+            "Status: Ollama is comparing the job description against the candidate evidence. Wait until this screen is replaced.\n\n"
+            f"Provider: {provider}\n\n"
+            f"Model: {model}\n\n"
+            "Do not generate final documents until this completes if you want the strategy included in the prompts.\n",
+        )
+        self.status_var.set("Running Ollama job fit analysis...")
+        self._set_job_fit_state(True)
+        self.update_idletasks()
+
+        thread = threading.Thread(
+            target=self._run_job_fit_analysis_worker,
+            args=(profile, job_description, settings, self.application_company_var.get().strip(), self.application_role_var.get().strip()),
+            daemon=True,
+        )
+        thread.start()
+
+    def _run_job_fit_analysis_worker(self, profile: CandidateProfile, job_description: str, settings: AISettings, company: str, role: str) -> None:
+        try:
+            result = self.ai_service.analyze_job_fit(
+                profile=profile,
+                job_description=job_description,
+                settings=settings,
+                target_company=company,
+                target_role=role,
+            )
+            self.after(0, lambda: self._finish_job_fit_analysis(result))
+        except Exception as exc:
+            self.after(0, lambda: self._fail_job_fit_analysis(exc))
+
+    def _finish_job_fit_analysis(self, result: str) -> None:
+        self.last_job_fit_analysis_markdown = result.strip()
+        self.job_fit_text.delete("1.0", tk.END)
+        self.job_fit_text.insert("1.0", self.last_job_fit_analysis_markdown)
+        self.application_modified_var.set(datetime.now().isoformat(timespec="seconds"))
+        self.status_var.set("Job fit analysis complete. Strategy will be used in the next generation prompt.")
+        self._set_job_fit_state(False)
+
+    def _fail_job_fit_analysis(self, exc: Exception) -> None:
+        self.status_var.set("Job fit analysis failed")
+        self._set_job_fit_state(False)
+        self.job_fit_text.delete("1.0", tk.END)
+        self.job_fit_text.insert("1.0", f"# Job Fit Analysis Failed\n\n{exc}")
+        messagebox.showerror("Job fit analysis failed", f"Could not analyze job fit:\n{exc}")
+
+    def _set_job_fit_state(self, is_running: bool) -> None:
+        state = "disabled" if is_running else "normal"
+        for button in getattr(self, "job_fit_buttons", []):
+            button.configure(state=state)
+        for button in getattr(self, "generate_buttons", []):
+            button.configure(state=state)
+
+    def _use_visible_job_fit_analysis(self) -> None:
+        text = self.job_fit_text.get("1.0", tk.END).strip()
+        if not text or "Run the analyzer after" in text:
+            messagebox.showwarning("No analysis", "Run the job fit analyzer first.")
+            return
+        self.last_job_fit_analysis_markdown = text
+        self.status_var.set("Visible job fit analysis will be used in the next generation prompt")
+
+    def _clear_job_fit_analysis(self) -> None:
+        self.last_job_fit_analysis_markdown = ""
+        self.job_fit_text.delete("1.0", tk.END)
+        self.job_fit_text.insert(
+            "1.0",
+            "Run the analyzer after adding the job description and structured evidence. "
+            "The resulting strategy will be included automatically in CV and covering-letter generation prompts.",
+        )
+        self.status_var.set("Job fit analysis cleared")
 
     def _build_quality_request(self) -> GenerationRequest:
         if self.last_generation_request is not None:
@@ -898,6 +1045,7 @@ class ResumeAIApp(tk.Tk):
                 template_name=self.template_var.get() or request.template_name,
                 document_type=request.document_type,
                 ai_settings=self._collect_ai_settings(),
+                job_fit_analysis=self._current_job_fit_analysis() or getattr(request, "job_fit_analysis", ""),
             )
 
         document_type = "CV" if self.last_document_type.lower() == "cv" else "Covering Letter"
@@ -907,6 +1055,7 @@ class ResumeAIApp(tk.Tk):
             template_name=self.template_var.get(),
             document_type=document_type,
             ai_settings=self._collect_ai_settings(),
+            job_fit_analysis=self._current_job_fit_analysis(),
         )
 
     def _run_quality_check(self) -> None:
@@ -1217,6 +1366,7 @@ class ResumeAIApp(tk.Tk):
             template_name=self.template_var.get(),
             document_type="CV",
             ai_settings=self._collect_ai_settings(),
+            job_fit_analysis=self._current_job_fit_analysis(),
         )
         self.output_text.delete("1.0", tk.END)
         self.output_text.insert("1.0", self.generated_cv_markdown)
@@ -1238,6 +1388,7 @@ class ResumeAIApp(tk.Tk):
             template_name=self.template_var.get(),
             document_type="Covering Letter",
             ai_settings=self._collect_ai_settings(),
+            job_fit_analysis=self._current_job_fit_analysis(),
         )
         self.output_text.delete("1.0", tk.END)
         self.output_text.insert("1.0", self.generated_covering_letter_markdown)
