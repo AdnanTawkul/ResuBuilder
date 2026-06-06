@@ -95,3 +95,34 @@ The Qt experiment now uses custom silent confirmation and information dialogs in
 - Centered dropdown chevron indicators.
 - Replaced AI timeout spinner triangles with matching SVG chevrons.
 - Added reusable up-chevron SVG assets for light and dark themes.
+
+### Step 24T, Qt top menu expansion
+
+- Added top-level menus for Workspace, Profile, Evidence, Job, Generate, Review, Export, and Settings.
+- Kept Workflow as a global navigation menu.
+- Added direct top-menu actions for common workflows so users are not forced to rely only on the sidebar.
+
+## Step 24U - Compact top menu cleanup
+
+Status: added.
+
+The Qt menu bar now matches the simpler legacy structure with only File, Settings, and Help. Sidebar navigation remains the primary page navigation. The top menu is reserved for application-level actions, quick settings, and help.
+
+## Step 24V: Settings dialog color repair
+
+- Repaired settings window background colors so dialog chrome, scroll area, cards, and footer use the active theme consistently.
+- Removed the gray/black background leak around the settings cards in Dark blue, Dark, and Light themes.
+
+
+## Step 24W: Compact sidebar cleanup
+
+- Removed the redundant Settings item from the left sidebar.
+- Settings now lives only in the top Settings menu and standalone settings window.
+- Sidebar is reserved for workflow pages only.
+
+
+## Step 24X menu width polish
+
+- Top dropdown menus now auto-size to the longest visible action.
+- Menu item padding was increased so labels such as Restore App Settings do not get clipped.
+- The menu polish applies across Light, Dark, and Dark blue themes.

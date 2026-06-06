@@ -304,37 +304,305 @@ class ResuBuilderQtApp(QMainWindow):
         self._build_shell()
         self.show_page("Welcome")
 
+    def _menu_action(self, label: str, callback) -> QAction:
+        action = QAction(label, self)
+        action.triggered.connect(lambda checked=False, cb=callback: cb())
+        return action
+
+    def _open_page_action(self, page_name: str, label: str | None = None) -> QAction:
+        return self._menu_action(label or f"Open {page_name}", lambda checked=False, name=page_name: self.show_page(name))
+
+    def _set_menu_width(self, menu, width: int) -> None:
+        """Set safe menu width without walking transient Qt menu objects.
+
+        PySide6 can delete temporary submenu wrappers while the menu bar is being built on
+        Windows. A previous dynamic-width helper walked child QMenu objects and could crash
+        at startup with: "Internal C++ object (QMenu) already deleted". Fixed widths are
+        safer here and still keep every menu label readable.
+        """
+        try:
+            menu.setMinimumWidth(width)
+        except RuntimeError:
+            # Do not crash the app because a transient Qt menu wrapper was already released.
+            pass
+
     def _build_menu(self) -> None:
+        """Build a compact top menu.
+
+        The sidebar remains the main workflow navigation. The menu bar is for app-level actions,
+        quick settings, and help, matching the simpler legacy structure.
+        """
         menu_bar = self.menuBar()
 
-        file_menu = menu_bar.addMenu("File")
-        new_workspace_action = QAction("New Application Workspace", self)
-        new_workspace_action.triggered.connect(self._new_workspace)
-        open_workspace_action = QAction("Load Application Workspace...", self)
-        open_workspace_action.triggered.connect(self._load_workspace)
-        save_workspace_action = QAction("Save Application Workspace", self)
-        save_workspace_action.triggered.connect(self._save_workspace)
-        save_as_workspace_action = QAction("Save Application Workspace As...", self)
-        save_as_workspace_action.triggered.connect(self._save_workspace_as)
-        quit_action = QAction("Exit", self)
-        quit_action.triggered.connect(self.close)
-        file_menu.addAction(new_workspace_action)
-        file_menu.addAction(open_workspace_action)
-        file_menu.addAction(save_workspace_action)
-        file_menu.addAction(save_as_workspace_action)
-        file_menu.addSeparator()
-        file_menu.addAction(quit_action)
+        self.file_menu = menu_bar.addMenu("File")
+        self.file_menu.addAction(self._menu_action("New Application Workspace", self._new_workspace))
+        self.file_menu.addAction(self._menu_action("Load Application Workspace...", self._load_workspace))
+        self.file_menu.addAction(self._menu_action("Save Application Workspace", self._save_workspace))
+        self.file_menu.addAction(self._menu_action("Save Application Workspace As...", self._save_workspace_as))
+        self.file_menu.addSeparator()
+        self.file_menu.addAction(self._menu_action("Save Profile", self._save_current_profile))
+        self.file_menu.addAction(self._menu_action("Load Saved Profile", self._load_saved_profile))
+        self.file_menu.addAction(self._menu_action("Import Profile JSON...", self._import_profile_json))
+        self.file_menu.addAction(self._menu_action("Export Profile JSON...", self._export_profile_json))
+        self.file_menu.addSeparator()
+        self.file_menu.addAction(self._menu_action("Export Application Package", self._export_application_package))
+        self.file_menu.addAction(self._menu_action("Open Export Folder", self._open_export_dir))
+        self.file_menu.addSeparator()
+        self.file_menu.addAction(self._menu_action("Exit", self.close))
 
-        workflow_menu = menu_bar.addMenu("Workflow")
-        for page_name in ["Welcome", "Workspace", "Profile", "Evidence", "Job", "Generate", "Review", "Export", "Settings"]:
-            action = QAction(page_name, self)
-            action.triggered.connect(lambda checked=False, name=page_name: self.show_page(name))
-            workflow_menu.addAction(action)
+        self.settings_menu = menu_bar.addMenu("Settings")
+        self.settings_menu.addAction(self._menu_action("Open Settings...", self._open_settings_window))
+        self.theme_menu = self.settings_menu.addMenu("UI Theme")
+        for theme_name in ("Light", "Dark", "Dark blue"):
+            self.theme_menu.addAction(self._menu_action(theme_name, lambda theme=theme_name: self._set_theme_from_menu(theme)))
+        self.settings_menu.addSeparator()
+        self.settings_menu.addAction(self._menu_action("Save App Settings", self._save_settings))
+        self.settings_menu.addAction(self._menu_action("Restore App Settings", self._reset_settings))
 
-        help_menu = menu_bar.addMenu("Help")
-        about_action = QAction("About Qt Experiment", self)
-        about_action.triggered.connect(self._show_about)
-        help_menu.addAction(about_action)
+        self.help_menu = menu_bar.addMenu("Help")
+        self.help_menu.addAction(self._menu_action("Workflow Guide", self._show_workflow_help))
+        self.help_menu.addAction(self._menu_action("Options Help", self._show_options_help))
+        self.help_menu.addSeparator()
+        self.help_menu.addAction(self._menu_action("About ResuBuilder", self._show_about))
+
+        self._set_menu_width(self.file_menu, 330)
+        self._set_menu_width(self.settings_menu, 240)
+        self._set_menu_width(self.theme_menu, 180)
+        self._set_menu_width(self.help_menu, 220)
+
+    def _set_theme_from_menu(self, theme_name: str) -> None:
+        """Apply a theme immediately from the compact top menu and remember it."""
+        theme = self._normalized_theme(theme_name)
+        self.app_settings.ui_theme = theme
+        if hasattr(self, "settings_theme_combo"):
+            self.settings_theme_combo.setCurrentText(theme)
+        self.setStyleSheet(theme_qss(theme))
+        try:
+            save_app_settings(self.app_settings)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "Theme", f"Theme changed, but could not save settings: {exc}")
+            return
+        if hasattr(self, "settings_status_label"):
+            self.settings_status_label.setText(f"Theme changed to {theme} and saved.")
+
+    def _refresh_settings_page_controls(self) -> None:
+        """Refresh the sidebar Settings page from self.app_settings when settings changed elsewhere."""
+        if not hasattr(self, "settings_provider_combo"):
+            return
+        self.settings_provider_combo.setCurrentText(getattr(self.app_settings, "ai_provider", "Ollama Local"))
+        self.settings_generation_mode_combo.setCurrentText(getattr(self.app_settings, "generation_mode", "Balanced"))
+        self.settings_ollama_url_edit.setText(getattr(self.app_settings, "ollama_base_url", "http://localhost:11434"))
+        self.settings_ollama_model_combo.setCurrentText(getattr(self.app_settings, "ollama_model", "qwen3:14b"))
+        self.settings_openai_model_combo.setCurrentText(getattr(self.app_settings, "openai_model", "gpt-4.1-mini"))
+        self.settings_timeout_spin.setValue(int(getattr(self.app_settings, "timeout_seconds", 120)))
+        self.settings_template_combo.setCurrentText(getattr(self.app_settings, "template_name", "ATS Friendly"))
+        self.settings_pdf_template_combo.setCurrentText(getattr(self.app_settings, "pdf_template", "ATS Friendly"))
+        self.settings_page_size_combo.setCurrentText(getattr(self.app_settings, "pdf_page_size", "A4"))
+        self.settings_workspace_dir_edit.setText(getattr(self.app_settings, "last_workspace_dir", "") or str(Path("data/applications")))
+        self.settings_export_dir_edit.setText(getattr(self.app_settings, "last_export_dir", "") or str(Path("exports")))
+        self.settings_theme_combo.setCurrentText(self._normalized_theme(getattr(self.app_settings, "ui_theme", "Dark blue")))
+
+    def _open_settings_window(self) -> None:
+        """Open settings in a standalone modal window from the top menu."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("ResuBuilder Settings")
+        dialog.setModal(True)
+        dialog.resize(960, 760)
+        dialog.setObjectName("SettingsWindow")
+
+        root = QVBoxLayout(dialog)
+        root.setContentsMargins(24, 22, 24, 22)
+        root.setSpacing(16)
+
+        title = QLabel("Settings")
+        title.setObjectName("PageTitle")
+        subtitle = QLabel("Adjust AI, document, folder, and appearance defaults without leaving the current workflow step.")
+        subtitle.setObjectName("PageSubtitle")
+        subtitle.setWordWrap(True)
+        root.addWidget(title)
+        root.addWidget(subtitle)
+
+        scroll = QScrollArea()
+        scroll.setObjectName("PageScrollArea")
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        content = QWidget()
+        content.setObjectName("ScrollContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 14, 0)
+        content_layout.setSpacing(18)
+
+        ai_card = Card("AI settings", "Controls used by generation, job fit analysis, AI review, and quality-fix improvement.")
+        ai_grid = QGridLayout()
+        ai_grid.setHorizontalSpacing(18)
+        ai_grid.setVerticalSpacing(14)
+        ai_grid.setColumnStretch(0, 1)
+        ai_grid.setColumnStretch(1, 1)
+
+        provider_combo = QComboBox()
+        provider_combo.addItems(["Ollama Local", "OpenAI"])
+        provider_combo.setCurrentText(getattr(self.app_settings, "ai_provider", "Ollama Local"))
+        generation_mode_combo = QComboBox()
+        generation_mode_combo.addItems(["Conservative", "Balanced", "Aggressive"])
+        generation_mode_combo.setCurrentText(getattr(self.app_settings, "generation_mode", "Balanced"))
+        ollama_url_edit = QLineEdit(getattr(self.app_settings, "ollama_base_url", "http://localhost:11434"))
+        ollama_model_combo = QComboBox()
+        ollama_model_combo.addItems(OLLAMA_MODEL_OPTIONS)
+        current_ollama_model = str(getattr(self.app_settings, "ollama_model", "qwen3:14b") or "qwen3:14b")
+        if current_ollama_model not in OLLAMA_MODEL_OPTIONS:
+            ollama_model_combo.addItem(current_ollama_model)
+        ollama_model_combo.setCurrentText(current_ollama_model)
+        openai_model_combo = QComboBox()
+        openai_model_combo.addItems(OPENAI_MODEL_OPTIONS)
+        current_openai_model = str(getattr(self.app_settings, "openai_model", "gpt-4.1-mini") or "gpt-4.1-mini")
+        if current_openai_model not in OPENAI_MODEL_OPTIONS:
+            openai_model_combo.addItem(current_openai_model)
+        openai_model_combo.setCurrentText(current_openai_model)
+        timeout_spin = QSpinBox()
+        timeout_spin.setRange(30, 600)
+        timeout_spin.setSingleStep(10)
+        timeout_spin.setSuffix(" seconds")
+        timeout_spin.setValue(int(getattr(self.app_settings, "timeout_seconds", 120) or 120))
+        for widget in (provider_combo, generation_mode_combo, ollama_url_edit, ollama_model_combo, openai_model_combo, timeout_spin):
+            self._prepare_form_control(widget, min_width=340)
+        self._add_labeled_field(ai_grid, 0, 0, "AI provider", provider_combo)
+        self._add_labeled_field(ai_grid, 0, 1, "Generation mode", generation_mode_combo)
+        self._add_labeled_field(ai_grid, 1, 0, "Ollama base URL", ollama_url_edit)
+        self._add_labeled_field(ai_grid, 1, 1, "Ollama model", ollama_model_combo)
+        self._add_labeled_field(ai_grid, 2, 0, "OpenAI model", openai_model_combo)
+        self._add_labeled_field(ai_grid, 2, 1, "AI timeout", timeout_spin)
+        ai_card.layout.addLayout(ai_grid)
+        content_layout.addWidget(ai_card)
+
+        doc_card = Card("Document defaults", "Default generation and PDF settings.")
+        doc_grid = QGridLayout()
+        doc_grid.setHorizontalSpacing(18)
+        doc_grid.setVerticalSpacing(14)
+        doc_grid.setColumnStretch(0, 1)
+        doc_grid.setColumnStretch(1, 1)
+        template_combo = QComboBox()
+        template_combo.addItems(get_template_names())
+        template_combo.setCurrentText(getattr(self.app_settings, "template_name", "ATS Friendly"))
+        pdf_template_combo = QComboBox()
+        pdf_template_combo.addItems(get_pdf_template_names())
+        pdf_template_combo.setCurrentText(getattr(self.app_settings, "pdf_template", "ATS Friendly"))
+        page_size_combo = QComboBox()
+        page_size_combo.addItems(["A4", "Letter"])
+        page_size_combo.setCurrentText(getattr(self.app_settings, "pdf_page_size", "A4"))
+        for widget in (template_combo, pdf_template_combo, page_size_combo):
+            self._prepare_form_control(widget, min_width=340)
+        self._add_labeled_field(doc_grid, 0, 0, "Generation template", template_combo)
+        self._add_labeled_field(doc_grid, 0, 1, "PDF template", pdf_template_combo)
+        self._add_labeled_field(doc_grid, 1, 0, "PDF page size", page_size_combo)
+        doc_card.layout.addLayout(doc_grid)
+        content_layout.addWidget(doc_card)
+
+        folder_card = Card("Default folders", "Where workspaces and application packages are stored by default.")
+        folder_grid = QGridLayout()
+        folder_grid.setHorizontalSpacing(12)
+        folder_grid.setVerticalSpacing(14)
+        workspace_dir_edit = QLineEdit(getattr(self.app_settings, "last_workspace_dir", "") or str(Path("data/applications")))
+        export_dir_edit = QLineEdit(getattr(self.app_settings, "last_export_dir", "") or str(Path("exports")))
+        self._prepare_form_control(workspace_dir_edit, min_width=520)
+        self._prepare_form_control(export_dir_edit, min_width=520)
+        self._add_labeled_field(folder_grid, 0, 0, "Workspace folder", workspace_dir_edit)
+        self._add_labeled_field(folder_grid, 1, 0, "Export folder", export_dir_edit)
+        folder_card.layout.addLayout(folder_grid)
+        content_layout.addWidget(folder_card)
+
+        appearance_card = Card("Appearance", "Select a theme for the Qt interface.")
+        theme_combo = QComboBox()
+        theme_combo.addItems(["Light", "Dark", "Dark blue"])
+        theme_combo.setCurrentText(self._normalized_theme(getattr(self.app_settings, "ui_theme", "Dark blue")))
+        self._prepare_form_control(theme_combo, min_width=260)
+        appearance_row = QHBoxLayout()
+        appearance_row.setSpacing(12)
+        appearance_row.addWidget(theme_combo)
+        preview_button = QPushButton("Preview Theme")
+        preview_button.clicked.connect(lambda: self.setStyleSheet(theme_qss(self._normalized_theme(theme_combo.currentText()))))
+        appearance_row.addWidget(preview_button)
+        appearance_row.addStretch(1)
+        appearance_card.layout.addLayout(appearance_row)
+        content_layout.addWidget(appearance_card)
+
+        status_label = QLabel("Settings loaded. Click Save Settings to make changes permanent.")
+        status_label.setObjectName("CardText")
+        status_label.setWordWrap(True)
+        content_layout.addWidget(status_label)
+        content_layout.addStretch(1)
+        scroll.setWidget(content)
+        root.addWidget(scroll, 1)
+
+        def save_dialog_settings() -> None:
+            self.app_settings.ai_provider = provider_combo.currentText()
+            self.app_settings.generation_mode = generation_mode_combo.currentText()
+            self.app_settings.ollama_base_url = ollama_url_edit.text().strip() or "http://localhost:11434"
+            self.app_settings.ollama_model = ollama_model_combo.currentText().strip() or "qwen3:14b"
+            self.app_settings.openai_model = openai_model_combo.currentText().strip() or "gpt-4.1-mini"
+            self.app_settings.timeout_seconds = int(timeout_spin.value())
+            self.app_settings.template_name = template_combo.currentText()
+            self.app_settings.pdf_template = pdf_template_combo.currentText()
+            self.app_settings.pdf_page_size = page_size_combo.currentText()
+            self.app_settings.last_workspace_dir = workspace_dir_edit.text().strip()
+            self.app_settings.last_export_dir = export_dir_edit.text().strip()
+            self.app_settings.ui_theme = self._normalized_theme(theme_combo.currentText())
+            self._refresh_settings_page_controls()
+            self._apply_settings_to_existing_controls()
+            try:
+                save_app_settings(self.app_settings)
+            except Exception as exc:  # noqa: BLE001
+                status_label.setText(f"Could not save settings: {exc}")
+                QMessageBox.critical(self, "Settings", f"Could not save settings: {exc}")
+                return
+            status_label.setText("Settings saved. Current workflow controls were updated.")
+            if hasattr(self, "settings_status_label"):
+                self.settings_status_label.setText("Settings saved from the top-menu settings window.")
+
+        button_row = QHBoxLayout()
+        button_row.addStretch(1)
+        save_button = QPushButton("Save Settings")
+        save_button.setObjectName("PrimaryButton")
+        save_button.clicked.connect(save_dialog_settings)
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(dialog.accept)
+        button_row.addWidget(save_button)
+        button_row.addWidget(close_button)
+        root.addLayout(button_row)
+        dialog.exec()
+
+    def _show_workflow_help(self) -> None:
+        QMessageBox.information(
+            self,
+            "Workflow Guide",
+            "Recommended workflow:\n\n"
+            "1. Workspace: create or load an application workspace.\n"
+            "2. Profile: load or enter candidate profile data.\n"
+            "3. Evidence: add strong proof blocks.\n"
+            "4. Job: structure the target job details.\n"
+            "5. Generate: analyze job fit, then generate CV and covering letter.\n"
+            "6. Review: run quality checks, AI review, and improvement.\n"
+            "7. Export: export PDFs or a full application package.\n\n"
+            "Use the sidebar for page navigation. Use File for workspace/profile/export actions."
+        )
+
+    def _show_options_help(self) -> None:
+        QMessageBox.information(
+            self,
+            "Options Help",
+            "File menu:\n"
+            "- Workspace actions create, load, and save complete application sessions.\n"
+            "- Profile actions import/export reusable candidate data.\n"
+            "- Export Application Package creates the final application folder.\n\n"
+            "Settings menu:\n"
+            "- Open Settings opens a standalone settings window.\n"
+            "- UI Theme changes the interface quickly.\n"
+            "- Save App Settings writes current settings to data/settings.json.\n"
+            "- Restore App Settings resets defaults.\n\n"
+            "Help menu:\n"
+            "- Workflow Guide explains the intended application process.\n"
+            "- Options Help explains menu actions."
+        )
 
     def _build_shell(self) -> None:
         shell = QWidget()
@@ -358,7 +626,7 @@ class ResuBuilderQtApp(QMainWindow):
         sidebar_layout.addWidget(subtitle)
         sidebar_layout.addSpacing(20)
 
-        for page_name in ["Welcome", "Workspace", "Profile", "Evidence", "Job", "Generate", "Review", "Export", "Settings"]:
+        for page_name in ["Welcome", "Workspace", "Profile", "Evidence", "Job", "Generate", "Review", "Export"]:
             button = QPushButton(page_name)
             button.setObjectName("NavButton")
             button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -384,7 +652,6 @@ class ResuBuilderQtApp(QMainWindow):
         self.pages["Generate"] = self._build_generate_page()
         self.pages["Review"] = self._build_review_page()
         self.pages["Export"] = self._build_export_page()
-        self.pages["Settings"] = self._build_settings_page()
 
         for page in self.pages.values():
             self.stack.addWidget(page)

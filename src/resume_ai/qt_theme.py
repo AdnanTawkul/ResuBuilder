@@ -20,13 +20,20 @@ def _with_asset_urls(qss: str) -> str:
 
 
 DARK_BLUE_QSS = """
-QMainWindow {
+QMainWindow, QDialog#SettingsWindow, QDialog#SilentDialog {
     background: #07111f;
 }
 QWidget {
     color: #eef5ff;
     font-family: "Segoe UI", "Inter", "Arial";
     font-size: 13px;
+}
+
+QDialog#SettingsWindow QWidget, QDialog#SilentDialog QWidget {
+    background-color: transparent;
+}
+QDialog#SettingsWindow QScrollArea, QDialog#SettingsWindow QScrollArea > QWidget, QDialog#SettingsWindow QScrollArea > QWidget > QWidget {
+    background-color: #07111f;
 }
 #AppShell {
     background: #07111f;
@@ -299,9 +306,20 @@ QMenu {
     background: #0b1424;
     color: #e2e8f0;
     border: 1px solid rgba(148, 163, 184, 0.24);
+    padding: 6px;
+}
+QMenu::item {
+    padding: 8px 46px 8px 16px;
+    min-width: 190px;
+    border-radius: 8px;
 }
 QMenu::item:selected {
     background: #1d4ed8;
+}
+QMenu::separator {
+    height: 1px;
+    background: rgba(148, 163, 184, 0.20);
+    margin: 6px 8px;
 }
 """
 
@@ -309,8 +327,10 @@ QMenu::item:selected {
 DARK_QSS = DARK_BLUE_QSS.replace("#07111f", "#0b0f17").replace("#0b1728", "#111827").replace("#101d31", "#171923").replace("#0b1424", "#111827").replace("#081322", "#0f172a")
 
 LIGHT_QSS = """
-QMainWindow { background: #f4f7fb; }
+QMainWindow, QDialog#SettingsWindow, QDialog#SilentDialog { background: #f4f7fb; }
 QWidget { color: #172033; font-family: "Segoe UI", "Inter", "Arial"; font-size: 13px; }
+QDialog#SettingsWindow QWidget, QDialog#SilentDialog QWidget { background-color: transparent; }
+QDialog#SettingsWindow QScrollArea, QDialog#SettingsWindow QScrollArea > QWidget, QDialog#SettingsWindow QScrollArea > QWidget > QWidget { background-color: #f4f7fb; }
 #AppShell, #Page, #ScrollContent, QStackedWidget { background-color: #f4f7fb; }
 #Sidebar { background: #ffffff; border-right: 1px solid rgba(15, 23, 42, 0.10); }
 #BrandTitle { color: #0f172a; font-size: 24px; font-weight: 800; letter-spacing: 0.4px; }
@@ -356,8 +376,10 @@ QScrollBar::handle:horizontal { background-color: qlineargradient(x1:0, y1:0, x2
 QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal, QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { background: transparent; width: 0px; }
 QMenuBar { background: #ffffff; color: #0f172a; border-bottom: 1px solid rgba(15, 23, 42, 0.10); }
 QMenuBar::item:selected { background: #f1f5f9; }
-QMenu { background: #ffffff; color: #0f172a; border: 1px solid rgba(15, 23, 42, 0.18); }
+QMenu { background: #ffffff; color: #0f172a; border: 1px solid rgba(15, 23, 42, 0.18); padding: 6px; }
+QMenu::item { padding: 8px 46px 8px 16px; min-width: 190px; border-radius: 8px; }
 QMenu::item:selected { background: #dbeafe; }
+QMenu::separator { height: 1px; background: rgba(15, 23, 42, 0.12); margin: 6px 8px; }
 """
 
 

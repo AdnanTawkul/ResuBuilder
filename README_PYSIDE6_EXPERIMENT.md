@@ -205,3 +205,31 @@ Test checklist:
 3. Check AI timeout up/down arrows.
 4. Switch between Light, Dark, and Dark blue.
 5. Confirm all arrows remain centered and visible.
+
+## Step 24U - Qt compact top menu cleanup
+
+- Reduced the Qt top menu to three menus: File, Settings, and Help.
+- Removed duplicated page-specific menus from the top bar.
+- File now contains workspace, profile, export, and exit actions.
+- Settings now contains Open Settings, quick UI Theme selection, Save App Settings, and Restore App Settings.
+- Help now contains Workflow Guide, Options Help, and About ResuBuilder.
+- Open Settings now launches a standalone settings window instead of only navigating to the sidebar Settings page.
+
+## Step 24V: Settings dialog color repair
+
+- Repaired settings window background colors so dialog chrome, scroll area, cards, and footer use the active theme consistently.
+- Removed the gray/black background leak around the settings cards in Dark blue, Dark, and Light themes.
+
+
+## Step 24W: Compact sidebar cleanup
+
+- Removed the redundant Settings item from the left sidebar.
+- Settings now lives only in the top Settings menu and standalone settings window.
+- Sidebar is reserved for workflow pages only.
+
+
+## Step 24X menu width polish
+
+- Top dropdown menus now auto-size to the longest visible action.
+- Menu item padding was increased so labels such as Restore App Settings do not get clipped.
+- The menu polish applies across Light, Dark, and Dark blue themes.
