@@ -1,6 +1,6 @@
-# Resume AI 2
+# ResuBuilder
 
-Resume AI 2 is a local desktop application for tailoring CVs and covering letters to a specific job description.
+ResuBuilder is a local desktop application for tailoring CVs and covering letters to a specific job description.
 
 ## Current features
 
@@ -314,7 +314,7 @@ Changes:
 - Removed **Settings** from the sidebar workflow and moved it into the top **Settings** menu.
 - Added a Settings window for AI provider, models, timeouts, templates, PDF defaults, and UI theme.
 - Added Help menu explanations for the workflow and menu options.
-- Added UI theme options: **Light**, **Soft Blue**, and **Dark**.
+- Added UI theme options: **Light**, **Dark**, and **Dark blue**.
 - Saved the selected UI theme in `data/settings.json`.
 
 Use this branch for the update:

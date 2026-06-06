@@ -40,7 +40,7 @@
 - Added top menu bar with File, Workflow, Settings, and Help menus
 - Added Welcome workflow page with a future logo placeholder
 - Moved Settings out of the sidebar and into the top menu
-- Added UI theme selection with Light, Soft Blue, and Dark themes
+- Added UI theme selection with Light, Dark, and Dark blue themes
 
 ## Next
 

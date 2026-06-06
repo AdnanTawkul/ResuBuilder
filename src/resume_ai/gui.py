@@ -58,8 +58,8 @@ GENERATION_MODES = [
 
 UI_THEME_OPTIONS = [
     "Light",
-    "Soft Blue",
     "Dark",
+    "Dark blue",
 ]
 
 
@@ -69,13 +69,18 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
             ctk.set_appearance_mode("light")
             ctk.set_default_color_theme("blue")
         super().__init__()
-        self.title("Resume AI 2")
+        self.title("ResuBuilder")
         self.geometry("1280x860")
         self.minsize(1100, 720)
 
         self.ai_service = AIService()
         self.app_settings = load_app_settings()
-        self.ui_theme_var = tk.StringVar(value=getattr(self.app_settings, "ui_theme", "Light") or "Light")
+        saved_ui_theme = getattr(self.app_settings, "ui_theme", "Light") or "Light"
+        if saved_ui_theme == "Soft Blue":
+            saved_ui_theme = "Dark blue"
+        if saved_ui_theme not in UI_THEME_OPTIONS:
+            saved_ui_theme = "Light"
+        self.ui_theme_var = tk.StringVar(value=saved_ui_theme)
         self.single_line_fields: dict[str, tk.StringVar] = {}
         self.multi_line_fields: dict[str, tk.Text] = {}
         self.template_var = tk.StringVar(value=self.app_settings.template_name)
@@ -168,46 +173,47 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
                 "button_active": "#eef2ff",
                 "button_disabled": "#eef2f7",
             },
-            "Soft Blue": {
-                "bg": "#eef5ff",
-                "surface": "#ffffff",
-                "sidebar": "#dbeafe",
-                "border": "#bfdbfe",
-                "text": "#102033",
-                "muted": "#486179",
-                "accent": "#0f63d7",
-                "accent_hover": "#0b4fb3",
-                "accent_soft": "#cfe4ff",
-                "warning_soft": "#fff3db",
-                "success_soft": "#e4f7ef",
-                "danger": "#9f1239",
-                "text_select": "#b7d8ff",
-                "button_active": "#dcecff",
-                "button_disabled": "#e8f0fb",
-            },
-            "Dark": {
-                "bg": "#111827",
-                "surface": "#1f2937",
-                "sidebar": "#0f172a",
-                "border": "#374151",
-                "text": "#f9fafb",
-                "muted": "#cbd5e1",
-                "accent": "#60a5fa",
-                "accent_hover": "#3b82f6",
-                "accent_soft": "#1e3a5f",
+            "Dark blue": {
+                "bg": "#071426",
+                "surface": "#0f2138",
+                "sidebar": "#08111f",
+                "border": "#1e3a5f",
+                "text": "#eaf2ff",
+                "muted": "#a9bdd8",
+                "accent": "#38bdf8",
+                "accent_hover": "#0ea5e9",
+                "accent_soft": "#12365a",
                 "warning_soft": "#3a2a12",
                 "success_soft": "#0f3b2e",
                 "danger": "#fca5a5",
-                "text_select": "#2563eb",
-                "button_active": "#263244",
-                "button_disabled": "#1f2937",
+                "text_select": "#155e75",
+                "button_active": "#102c4d",
+                "button_disabled": "#0d1b2d",
+            },
+            "Dark": {
+                "bg": "#121212",
+                "surface": "#1e1e1e",
+                "sidebar": "#171717",
+                "border": "#3f3f46",
+                "text": "#f4f4f5",
+                "muted": "#c4c4cc",
+                "accent": "#a78bfa",
+                "accent_hover": "#8b5cf6",
+                "accent_soft": "#2e2546",
+                "warning_soft": "#3a2a12",
+                "success_soft": "#0f3b2e",
+                "danger": "#fca5a5",
+                "text_select": "#5b21b6",
+                "button_active": "#2a2a2e",
+                "button_disabled": "#202020",
             },
         }
         self.ui_colors = theme_palettes.get(theme_name, theme_palettes["Light"])
         colors = self.ui_colors
+        is_dark_theme = theme_name in {"Dark", "Dark blue"}
 
         if ctk is not None:
-            ctk.set_appearance_mode("dark" if theme_name == "Dark" else "light")
+            ctk.set_appearance_mode("dark" if is_dark_theme else "light")
             ctk.set_default_color_theme("blue")
 
         try:
@@ -255,7 +261,7 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         style.configure(
             "Accent.TButton",
             background=colors["accent"],
-            foreground="#ffffff" if theme_name != "Dark" else "#0b1220",
+            foreground="#0b1220" if is_dark_theme else "#ffffff",
             bordercolor=colors["accent"],
         )
         style.map(
@@ -267,8 +273,8 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         style.map("Sidebar.TButton", background=[("active", colors["button_active"])])
         style.configure("SidebarSelected.TButton", anchor="w", padding=(12, 8), background=colors["accent_soft"], foreground=colors["accent"], bordercolor=colors["accent_soft"])
         style.map("SidebarSelected.TButton", background=[("active", colors["accent_soft"])])
-        style.configure("SidebarComplete.TButton", anchor="w", padding=(12, 8), background=colors["success_soft"], foreground="#047857" if theme_name != "Dark" else "#6ee7b7", bordercolor=colors["success_soft"])
-        style.configure("SidebarWarning.TButton", anchor="w", padding=(12, 8), background=colors["warning_soft"], foreground="#b45309" if theme_name != "Dark" else "#fdba74", bordercolor=colors["warning_soft"])
+        style.configure("SidebarComplete.TButton", anchor="w", padding=(12, 8), background=colors["success_soft"], foreground="#6ee7b7" if is_dark_theme else "#047857", bordercolor=colors["success_soft"])
+        style.configure("SidebarWarning.TButton", anchor="w", padding=(12, 8), background=colors["warning_soft"], foreground="#fdba74" if is_dark_theme else "#b45309", bordercolor=colors["warning_soft"])
 
         style.configure("TEntry", fieldbackground=colors["surface"], foreground=colors["text"], insertcolor=colors["accent"], padding=(8, 6), bordercolor=colors["border"])
         style.map("TEntry", bordercolor=[("focus", colors["accent"]), ("disabled", colors["border"])])
@@ -389,7 +395,7 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         sidebar.grid(row=0, column=0, sticky="ns")
         sidebar.columnconfigure(0, weight=1)
 
-        ttk.Label(sidebar, text="Resume AI 2", style="AppTitle.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 4))
+        ttk.Label(sidebar, text="ResuBuilder", style="AppTitle.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 4))
         ttk.Label(
             sidebar,
             text="Guided workflow",
@@ -529,12 +535,14 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         help_menu.add_command(label="Workflow Help", command=lambda: self._show_help_window("Workflow Help", self._workflow_help_text()))
         help_menu.add_command(label="Menu and Options Help", command=lambda: self._show_help_window("Menu and Options Help", self._options_help_text()))
         help_menu.add_separator()
-        help_menu.add_command(label="About Resume AI 2", command=lambda: self._show_help_window("About Resume AI 2", self._about_text()))
+        help_menu.add_command(label="About ResuBuilder", command=lambda: self._show_help_window("About ResuBuilder", self._about_text()))
         menubar.add_cascade(label="Help", menu=help_menu)
 
         self.configure(menu=menubar)
 
     def _set_ui_theme(self, theme_name: str) -> None:
+        if theme_name == "Soft Blue":
+            theme_name = "Dark blue"
         if theme_name not in UI_THEME_OPTIONS:
             theme_name = "Light"
         self.ui_theme_var.set(theme_name)
@@ -635,7 +643,7 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
             "- Jump directly to any workflow step without using the sidebar.\n\n"
             "Settings\n"
             "- Open Settings: configure Ollama, OpenAI, generation mode, timeout, templates, and export defaults.\n"
-            "- UI Theme: switch between Light, Soft Blue, and Dark.\n"
+            "- UI Theme: switch between Light, Dark, and Dark blue.\n"
             "- Save App Settings: saves non-secret defaults locally.\n"
             "- Reset App Settings: restores defaults.\n\n"
             "Help\n"
@@ -645,7 +653,7 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
 
     def _about_text(self) -> str:
         return (
-            "Resume AI 2\n\n"
+            "ResuBuilder\n\n"
             "A local-first application for tailoring CVs and covering letters to specific job descriptions.\n\n"
             "Core capabilities:\n"
             "- Structured candidate profile and evidence collection\n"
@@ -669,7 +677,7 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         logo_frame.rowconfigure(0, weight=1)
         logo_label = ttk.Label(
             logo_frame,
-            text="Resume AI 2\n\n[ Future logo here ]",
+            text="ResuBuilder\n\n[ Future logo here ]",
             justify="center",
             anchor="center",
             style="Title.TLabel",
@@ -682,7 +690,7 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         ttk.Label(
             intro,
             text=(
-                "Resume AI 2 helps you build a tailored CV and covering letter for one job application at a time. "
+                "ResuBuilder helps you build a tailored CV and covering letter for one job application at a time. "
                 "It uses your profile, structured evidence, the job description, and optional job-fit analysis to generate stronger, safer documents."
             ),
             wraplength=760,
@@ -1587,7 +1595,12 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
 
     def _apply_app_settings(self, settings: AppSettings) -> None:
         self.app_settings = settings
-        self.ui_theme_var.set(getattr(settings, "ui_theme", "Light") or "Light")
+        saved_ui_theme = getattr(settings, "ui_theme", "Light") or "Light"
+        if saved_ui_theme == "Soft Blue":
+            saved_ui_theme = "Dark blue"
+        if saved_ui_theme not in UI_THEME_OPTIONS:
+            saved_ui_theme = "Light"
+        self.ui_theme_var.set(saved_ui_theme)
         self.template_var.set(settings.template_name)
         self.pdf_template_var.set(settings.pdf_template)
         self.pdf_page_size_var.set(settings.pdf_page_size)
