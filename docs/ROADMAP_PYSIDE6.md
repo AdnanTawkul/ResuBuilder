@@ -12,6 +12,7 @@
 - Add Qt PDF export.
 - Add Qt application package export.
 - Fix Export page field sizing.
+- Add scrollable Export page and wider scrollbars.
 
 ## Next
 
@@ -21,3 +22,10 @@
 4. Add Qt AI Quality Review and Improve with Quality Fixes.
 5. Add settings editing inside the Qt Settings page.
 6. Decide whether Qt replaces the old GUI.
+
+
+## Step 24G, Qt scrollbar and background cleanup
+
+- Fixed dark-blue scroll area background bleed that appeared as brown gaps between cards.
+- Restyled vertical and horizontal scrollbars with wider, higher-contrast handles.
+- Applied consistent page and scroll-content backgrounds across Profile and Export.

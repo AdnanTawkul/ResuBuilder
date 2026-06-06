@@ -142,18 +142,62 @@ QLabel#WarningText {
 QLabel#SuccessText {
     color: #34d399;
 }
+QStackedWidget, QWidget#Page, QWidget#ScrollContent {
+    background-color: #07111f;
+}
 QScrollArea {
     border: none;
-    background: transparent;
+    background-color: #07111f;
+}
+QScrollArea > QWidget, QScrollArea > QWidget > QWidget {
+    background-color: #07111f;
+}
+QScrollArea#PageScrollArea {
+    background-color: #07111f;
 }
 QScrollBar:vertical {
-    background: #0b1728;
-    width: 10px;
-    margin: 4px;
+    background-color: #0a1627;
+    width: 20px;
+    margin: 0px;
+    border-left: 1px solid rgba(148, 163, 184, 0.16);
 }
 QScrollBar::handle:vertical {
-    background: #334155;
-    border-radius: 5px;
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #38bdf8, stop:1 #7c3aed);
+    min-height: 56px;
+    border-radius: 8px;
+    margin: 4px;
+}
+QScrollBar::handle:vertical:hover {
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #67e8f9, stop:1 #8b5cf6);
+}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: transparent;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+    background: transparent;
+}
+QScrollBar:horizontal {
+    background-color: #0a1627;
+    height: 20px;
+    margin: 0px;
+    border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+QScrollBar::handle:horizontal {
+    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #38bdf8, stop:1 #7c3aed);
+    min-width: 56px;
+    border-radius: 8px;
+    margin: 4px;
+}
+QScrollBar::handle:horizontal:hover {
+    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #67e8f9, stop:1 #8b5cf6);
+}
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+    background: transparent;
+}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0px;
+    background: transparent;
 }
 QMenuBar {
     background: #081322;

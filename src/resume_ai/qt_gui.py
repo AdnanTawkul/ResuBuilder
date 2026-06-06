@@ -172,6 +172,7 @@ class ResuBuilderQtApp(QMainWindow):
         sidebar_layout.addWidget(warning)
 
         self.stack = QStackedWidget()
+        self.stack.setObjectName("MainStack")
         self.stack.setContentsMargins(0, 0, 0, 0)
 
         self.pages["Welcome"] = self._build_welcome_page()
@@ -190,6 +191,7 @@ class ResuBuilderQtApp(QMainWindow):
 
     def _page_container(self, title: str, subtitle: str) -> tuple[QWidget, QVBoxLayout]:
         page = QWidget()
+        page.setObjectName("Page")
         page_layout = QVBoxLayout(page)
         page_layout.setContentsMargins(34, 30, 34, 30)
         page_layout.setSpacing(20)
@@ -257,8 +259,12 @@ class ResuBuilderQtApp(QMainWindow):
         )
 
         scroll = QScrollArea()
+        scroll.setObjectName("PageScrollArea")
         scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         content = QWidget()
+        content.setObjectName("ScrollContent")
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(18)
@@ -451,9 +457,23 @@ class ResuBuilderQtApp(QMainWindow):
             "Export the generated CV and covering letter as PDFs, or create a complete application package folder.",
         )
 
-        settings_card = Card("Export settings", "Use a clear company and role name so generated files are easy to find later.")
+        scroll = QScrollArea()
+        scroll.setObjectName("PageScrollArea")
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        content = QWidget()
+        content.setObjectName("ScrollContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 14, 0)
+        content_layout.setSpacing(20)
+
+        settings_card = Card("Export settings", "Use clear company and role names so generated files are easy to find later.")
+        settings_card.setMinimumHeight(300)
         settings_grid = QGridLayout()
-        settings_grid.setSpacing(16)
+        settings_grid.setHorizontalSpacing(20)
+        settings_grid.setVerticalSpacing(18)
         settings_grid.setColumnStretch(0, 1)
         settings_grid.setColumnStretch(1, 1)
 
@@ -473,6 +493,10 @@ class ResuBuilderQtApp(QMainWindow):
 
         self.export_page_size_combo = QComboBox()
         self.export_page_size_combo.addItems(["A4", "Letter"])
+        page_size_index = self.export_page_size_combo.findText(getattr(self.app_settings, "pdf_page_size", "A4"))
+        if page_size_index >= 0:
+            self.export_page_size_combo.setCurrentIndex(page_size_index)
+
         for export_widget in (
             self.export_company_edit,
             self.export_role_edit,
@@ -480,16 +504,14 @@ class ResuBuilderQtApp(QMainWindow):
             self.export_pdf_template_combo,
             self.export_page_size_combo,
         ):
-            self._prepare_form_control(export_widget, min_width=360)
-        page_size_index = self.export_page_size_combo.findText(getattr(self.app_settings, "pdf_page_size", "A4"))
-        if page_size_index >= 0:
-            self.export_page_size_combo.setCurrentIndex(page_size_index)
+            self._prepare_form_control(export_widget, min_width=420)
 
         default_export_dir = getattr(self.app_settings, "last_export_dir", "") or str(Path("exports"))
         self.export_dir_edit = QLineEdit(default_export_dir)
-        self._prepare_form_control(self.export_dir_edit, min_width=360)
+        self._prepare_form_control(self.export_dir_edit, min_width=420)
         browse_button = QPushButton("Browse")
-        browse_button.setMinimumHeight(42)
+        browse_button.setMinimumHeight(46)
+        browse_button.setMinimumWidth(110)
         browse_button.clicked.connect(self._browse_export_dir)
 
         self._add_labeled_field(settings_grid, 0, 0, "Target company", self.export_company_edit)
@@ -499,22 +521,26 @@ class ResuBuilderQtApp(QMainWindow):
         self._add_labeled_field(settings_grid, 2, 0, "Page size", self.export_page_size_combo)
 
         export_dir_wrapper = QWidget()
+        export_dir_wrapper.setMinimumHeight(82)
         export_dir_layout = QVBoxLayout(export_dir_wrapper)
         export_dir_layout.setContentsMargins(0, 0, 0, 0)
-        export_dir_layout.setSpacing(6)
+        export_dir_layout.setSpacing(8)
         export_dir_layout.addWidget(QLabel("Export folder"))
         export_dir_row = QHBoxLayout()
         export_dir_row.setContentsMargins(0, 0, 0, 0)
+        export_dir_row.setSpacing(10)
         export_dir_row.addWidget(self.export_dir_edit, 1)
         export_dir_row.addWidget(browse_button)
         export_dir_layout.addLayout(export_dir_row)
         settings_grid.addWidget(export_dir_wrapper, 2, 1)
 
         settings_card.layout.addLayout(settings_grid)
-        layout.addWidget(settings_card)
+        content_layout.addWidget(settings_card)
 
         actions_card = Card("Export actions", "Export one document for quick testing, or export the full application package when both documents are ready.")
+        actions_card.setMinimumHeight(160)
         action_row = QHBoxLayout()
+        action_row.setSpacing(12)
         self.export_pdf_button = QPushButton("Export Selected PDF")
         self.export_pdf_button.setObjectName("PrimaryButton")
         self.export_pdf_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -531,30 +557,43 @@ class ResuBuilderQtApp(QMainWindow):
         self.open_export_dir_button = QPushButton("Open Export Folder")
         self.open_export_dir_button.clicked.connect(self._open_export_dir)
 
+        for button in (
+            self.export_pdf_button,
+            self.save_markdown_button,
+            self.export_package_button,
+            self.open_export_dir_button,
+        ):
+            button.setMinimumHeight(46)
+
         action_row.addWidget(self.export_pdf_button)
         action_row.addWidget(self.save_markdown_button)
         action_row.addWidget(self.export_package_button)
         action_row.addWidget(self.open_export_dir_button)
         action_row.addStretch(1)
         actions_card.layout.addLayout(action_row)
-        layout.addWidget(actions_card)
+        content_layout.addWidget(actions_card)
 
         status_card = QFrame()
         status_card.setObjectName("OutputCard")
+        status_card.setMinimumHeight(260)
         status_layout = QVBoxLayout(status_card)
         status_layout.setContentsMargins(22, 20, 22, 20)
         status_layout.setSpacing(12)
         status_title = QLabel("Export status")
         status_title.setObjectName("CardTitle")
         self.export_status_edit = QPlainTextEdit()
-        self.export_status_edit.setMinimumHeight(240)
+        self.export_status_edit.setMinimumHeight(220)
         self.export_status_edit.setReadOnly(True)
         self.export_status_edit.setPlainText(
             "No export yet. Generate the CV and covering letter first, then export the package."
         )
         status_layout.addWidget(status_title)
         status_layout.addWidget(self.export_status_edit, 1)
-        layout.addWidget(status_card, 1)
+        content_layout.addWidget(status_card)
+        content_layout.addStretch(1)
+
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
         return page
 
     def _build_settings_page(self) -> QWidget:
@@ -591,7 +630,7 @@ class ResuBuilderQtApp(QMainWindow):
 
     def _prepare_form_control(self, widget: QWidget, min_width: int = 260) -> None:
         if isinstance(widget, (QLineEdit, QComboBox)):
-            widget.setMinimumHeight(42)
+            widget.setMinimumHeight(46)
             widget.setMinimumWidth(min_width)
             widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         elif isinstance(widget, (QTextEdit, QPlainTextEdit)):
@@ -601,9 +640,10 @@ class ResuBuilderQtApp(QMainWindow):
     def _add_labeled_field(self, grid: QGridLayout, row: int, column: int, label: str, widget: QWidget) -> None:
         self._prepare_form_control(widget)
         wrapper = QWidget()
+        wrapper.setMinimumHeight(82)
         wrapper_layout = QVBoxLayout(wrapper)
         wrapper_layout.setContentsMargins(0, 0, 0, 0)
-        wrapper_layout.setSpacing(6)
+        wrapper_layout.setSpacing(8)
         wrapper_layout.addWidget(QLabel(label))
         wrapper_layout.addWidget(widget)
         grid.addWidget(wrapper, row, column)
