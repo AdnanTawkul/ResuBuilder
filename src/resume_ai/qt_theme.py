@@ -58,6 +58,11 @@ QWidget {
     color: #9fb0c4;
     line-height: 1.4;
 }
+#MetricNumber {
+    color: #ffffff;
+    font-size: 36px;
+    font-weight: 900;
+}
 QLineEdit, QTextEdit, QPlainTextEdit, QComboBox {
     background: #0b1424;
     color: #eef5ff;

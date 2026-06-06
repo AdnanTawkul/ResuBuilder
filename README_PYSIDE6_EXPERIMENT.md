@@ -1,42 +1,53 @@
 # ResuBuilder PySide6 Experiment
 
-This branch is an experimental PySide6/Qt interface for ResuBuilder. It must live beside the existing working Tk/CustomTkinter app until it reaches feature parity.
+This branch is an experimental PySide6/Qt interface for ResuBuilder. It does not replace the existing Tk/CustomTkinter app yet.
 
-Run the Qt experiment with:
+## Current status
+
+Working in the Qt prototype:
+
+- Modern dark-blue Qt shell
+- Sidebar navigation
+- Welcome page
+- Profile page
+- Email validation before generation
+- Telephone number-only validation
+- Generate CV
+- Generate covering letter
+- Background generation worker with crash logging
+- Deterministic quality check in the Review page
+- Settings read from `data/settings.json`
+
+Still placeholder or partial:
+
+- Workspace save/load
+- Structured Evidence Builder
+- Job Fit Analyzer
+- AI Quality Review
+- Improve with Quality Fixes
+- PDF export
+- Application package export
+
+## Run
 
 ```bash
 python app_qt.py
 ```
 
-Run the existing stable app with:
+Keep the existing app available:
 
 ```bash
 python app.py
 ```
 
-## Current scope
+## Debug log
 
-The Qt prototype currently includes:
-
-- Modern dark-blue shell
-- Sidebar navigation
-- Welcome page
-- Profile page
-- Email validation
-- Telephone number-only validation
-- Generate page connected to the existing AI service
-- Settings page reading from `data/settings.json`
-
-Review, export, workspace, evidence, and job fit pages are placeholders for now.
-
-## Step 24B stability fix
-
-The generation worker now uses a normal Python background thread with Qt signals instead of a raw QThread worker object. This makes the experimental generation flow easier to debug and avoids worker lifecycle issues while the Qt app is still a prototype.
-
-A debug log is written to:
+The Qt experiment writes GUI errors to:
 
 ```text
 data/logs/qt_gui.log
 ```
 
-Do not commit `data/logs/`.
+## Rule
+
+Do not merge this branch into `main` until the Qt interface reaches feature parity with the existing GUI.

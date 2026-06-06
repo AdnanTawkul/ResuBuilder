@@ -1,28 +1,20 @@
 # PySide6 GUI Experiment Roadmap
 
-## Current goal
+## Done
 
-Prove that PySide6 can replace the current desktop GUI without breaking the existing ResuBuilder backend.
+- Add Qt shell beside the existing GUI.
+- Add modern dark-blue theme.
+- Add Profile page with validation.
+- Connect generation to existing AI service.
+- Stabilize background generation worker.
+- Add deterministic quality check page.
 
-## Step 24A
+## Next
 
-- Add PySide6 app shell
-- Add Welcome page
-- Add Profile page
-- Add Generate page
-- Keep old GUI alive
-
-## Step 24B
-
-- Stabilize background generation in the Qt prototype
-- Add debug logging to `data/logs/qt_gui.log`
-- Prevent silent generation failures from hiding useful diagnostics
-
-## Next steps
-
-1. Wire workspace save/load.
-2. Wire structured evidence builder.
-3. Wire job fit analyzer.
-4. Wire quality review.
-5. Wire PDF/package export.
-6. Decide whether Qt should replace the old GUI.
+1. Add Qt Workspace save/load.
+2. Add Qt PDF export for CV and covering letter.
+3. Add Qt application package export.
+4. Add Qt Evidence Builder.
+5. Add Qt Job Fit Analyzer.
+6. Add Qt AI Quality Review and Improve with Quality Fixes.
+7. Decide whether Qt replaces the old GUI.

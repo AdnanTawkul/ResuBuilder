@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 
 from .ai_service import AIService
 from .models import AISettings, CandidateProfile, GenerationRequest
+from .quality_checker import analyze_document, format_quality_report
 from .settings_manager import AppSettings, load_app_settings, save_app_settings
 from .templates import get_template_names
 from .qt_theme import DARK_BLUE_QSS
@@ -170,10 +171,7 @@ class ResuBuilderQtApp(QMainWindow):
         self.pages["Welcome"] = self._build_welcome_page()
         self.pages["Profile"] = self._build_profile_page()
         self.pages["Generate"] = self._build_generate_page()
-        self.pages["Review"] = self._build_placeholder_page(
-            "Review",
-            "Quality check and AI review will be wired after the core Qt flow is proven.",
-        )
+        self.pages["Review"] = self._build_review_page()
         self.pages["Export"] = self._build_placeholder_page(
             "Export",
             "PDF and application package export will be connected after generation works reliably.",
@@ -370,6 +368,62 @@ class ResuBuilderQtApp(QMainWindow):
         layout.addWidget(output_card, 1)
         return page
 
+    def _build_review_page(self) -> QWidget:
+        page, layout = self._page_container(
+            "Review",
+            "Run the existing deterministic quality checker against the generated CV or covering letter.",
+        )
+
+        controls = Card("Quality check", "This is the fast rule-based review. AI quality review will be wired in a later Qt step.")
+        row = QHBoxLayout()
+        self.review_document_combo = QComboBox()
+        self.review_document_combo.addItems(["CV", "Covering Letter"])
+        run_button = QPushButton("Run Quality Check")
+        run_button.setObjectName("PrimaryButton")
+        run_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        run_button.clicked.connect(self._run_quality_check)
+        show_button = QPushButton("Show Selected Document")
+        show_button.clicked.connect(self._show_selected_review_document)
+        row.addWidget(QLabel("Document"))
+        row.addWidget(self.review_document_combo)
+        row.addWidget(run_button)
+        row.addWidget(show_button)
+        row.addStretch(1)
+        controls.layout.addLayout(row)
+        layout.addWidget(controls)
+
+        score_row = QGridLayout()
+        score_row.setSpacing(18)
+        self.review_score_label = QLabel("No quality check run yet")
+        self.review_score_label.setObjectName("MetricNumber")
+        self.review_status_label = QLabel("Generate a CV or covering letter first, then run the checker.")
+        self.review_status_label.setObjectName("CardText")
+        score_card = Card("Latest score", "")
+        score_card.layout.addWidget(self.review_score_label)
+        score_card.layout.addWidget(self.review_status_label)
+        tip_card = Card(
+            "Rule-based first",
+            "This catches contact, ATS, evidence, and truth-supported keyword issues before you spend time on AI review.",
+        )
+        score_row.addWidget(score_card, 0, 0)
+        score_row.addWidget(tip_card, 0, 1)
+        layout.addLayout(score_row)
+
+        report_card = QFrame()
+        report_card.setObjectName("OutputCard")
+        report_layout = QVBoxLayout(report_card)
+        report_layout.setContentsMargins(22, 20, 22, 20)
+        report_layout.setSpacing(12)
+        report_title = QLabel("Quality report")
+        report_title.setObjectName("CardTitle")
+        self.quality_report_edit = QPlainTextEdit()
+        self.quality_report_edit.setMinimumHeight(360)
+        self.quality_report_edit.setPlainText("No report yet.")
+        report_layout.addWidget(report_title)
+        report_layout.addWidget(self.quality_report_edit, 1)
+        layout.addWidget(report_card, 1)
+        return page
+
     def _build_settings_page(self) -> QWidget:
         page, layout = self._page_container(
             "Settings",
@@ -520,7 +574,7 @@ class ResuBuilderQtApp(QMainWindow):
         else:
             self.generated_covering_letter = text
         self.output_edit.setPlainText(text)
-        self.status_label.setText(f"{document_type} generated. Verify every claim before exporting.")
+        self.status_label.setText(f"{document_type} generated. Verify every claim, then run Review > Quality Check.")
 
     def _generation_failed(self, job_id: int, error: str) -> None:
         if job_id != self._generation_job_id:
@@ -555,6 +609,52 @@ class ResuBuilderQtApp(QMainWindow):
         except Exception:
             # Logging must never crash the GUI.
             pass
+
+    def _selected_review_document_text(self) -> tuple[str, str]:
+        document_type = self.review_document_combo.currentText() if hasattr(self, "review_document_combo") else "CV"
+        if document_type == "CV":
+            return document_type, self.generated_cv
+        return document_type, self.generated_covering_letter
+
+    def _show_selected_review_document(self) -> None:
+        document_type, text = self._selected_review_document_text()
+        if not text.strip():
+            QMessageBox.information(self, "No generated document", f"Generate a {document_type} before reviewing it.")
+            return
+        self.output_edit.setPlainText(text)
+        self.document_type_combo.setCurrentText(document_type)
+        self.show_page("Generate")
+
+    def _run_quality_check(self) -> None:
+        document_type, text = self._selected_review_document_text()
+        if not text.strip():
+            QMessageBox.warning(self, "Cannot run quality check", f"Generate a {document_type} first.")
+            return
+        job_description = self.job_description_edit.toPlainText().strip()
+        if not job_description:
+            QMessageBox.warning(self, "Cannot run quality check", "Paste a job description before running the checker.")
+            return
+        ok, message = self._validate_profile()
+        if not ok:
+            QMessageBox.warning(self, "Cannot run quality check", message)
+            return
+
+        try:
+            report = analyze_document(
+                document_text=text,
+                job_description=job_description,
+                profile=self._build_profile(),
+                document_type=document_type,
+            )
+            formatted = format_quality_report(report)
+        except Exception as exc:  # noqa: BLE001
+            self._write_qt_log("Quality check failed:\n" + traceback.format_exc())
+            QMessageBox.critical(self, "Quality check failed", str(exc))
+            return
+
+        self.quality_report_edit.setPlainText(formatted)
+        self.review_score_label.setText(f"{report.score}/100")
+        self.review_status_label.setText(report.verdict)
 
     def _save_settings(self) -> None:
         try:
