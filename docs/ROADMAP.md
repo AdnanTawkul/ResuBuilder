@@ -32,11 +32,13 @@
 - Added one-click application package export
 - Added package folders with CV PDF, covering letter PDF, quality report, and summary JSON
 - Added structured evidence builder for stronger AI inputs
+- Added AI-powered Job Fit Analyzer using Ollama before generation
 
 ## Next
 
 1. Add guided questions for unsupported job signals.
-2. Add document version history inside each application workspace.
-3. Add local project settings file.
-4. Add template preview and editing.
-5. Package the app as a Windows executable.
+2. Feed job fit strategy into quality improvement history and document versioning.
+3. Add document version history inside each application workspace.
+4. Add local project settings file.
+5. Add template preview and editing.
+6. Package the app as a Windows executable.

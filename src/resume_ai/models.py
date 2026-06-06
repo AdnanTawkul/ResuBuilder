@@ -45,3 +45,4 @@ class GenerationRequest:
     template_name: str
     document_type: str
     ai_settings: AISettings
+    job_fit_analysis: str = ""

@@ -8,6 +8,7 @@ Resume AI 2 is a local desktop application for tailoring CVs and covering letter
 - Candidate profile fields
 - Structured evidence builder for projects, jobs, tools, outcomes, proof, and job signals
 - Job description input
+- AI-powered Job Fit Analyzer using Ollama before generation
 - Existing CV and covering letter input
 - Existing PDF CV/covering-letter import
 - PDF/text job description import
@@ -74,11 +75,12 @@ Recommended flow:
 2. Enter application name, target company, and target role.
 3. Fill or import candidate profile, job description, existing CV, or existing covering letter.
 4. Add structured evidence blocks for the strongest projects, jobs, tools, outcomes, and proof.
-5. Generate the CV or covering letter.
-6. Run Quality Check and AI Quality Review.
-7. Improve with Quality Fixes if needed.
-8. Save Application.
-9. Export the full application package.
+5. Run Job Fit Analyzer to create a truthful generation strategy.
+6. Generate the CV or covering letter.
+7. Run Quality Check and AI Quality Review.
+8. Improve with Quality Fixes if needed.
+9. Save Application.
+10. Export the full application package.
 ```
 
 Workspace files are saved as JSON under:
@@ -111,9 +113,29 @@ A workspace stores:
 - Generated output
 - Quality report
 - AI review
+- Job fit analysis and generation strategy
 ```
 
 Do not commit private application workspace JSON files to GitHub unless they contain fake/demo data.
+
+## Job Fit Analyzer workflow
+
+Use the **Job Fit Analyzer** tab before generating documents. It uses Ollama locally to compare the job description against the profile, existing CV/covering letter, and structured evidence.
+
+It produces:
+
+```text
+- Fit score
+- Strong alignment
+- Weak alignment
+- Unsupported or risky claims
+- Recommended CV strategy
+- Recommended covering-letter strategy
+- Evidence gaps to fill
+- Generation instructions
+```
+
+The analysis is automatically included in the next CV and covering-letter generation prompt. This prevents the app from chasing unsupported keywords or producing fake alignment.
 
 ## Local AI setup
 
@@ -146,17 +168,19 @@ Timeout: 240
 2. Import an existing PDF CV or covering letter into the Existing CV / Covering Letter tab.
 3. Import or paste a job description.
 4. Add structured evidence blocks for your strongest relevant proof.
-5. Generate a tailored CV.
-6. Generate a tailored covering letter.
-7. Run Quality Check on both document types.
-8. Run AI Quality Review.
-9. Click Improve with Quality Fixes.
-10. Save the application workspace.
-11. Close and reopen the app.
-12. Load the saved application workspace.
-13. Confirm structured evidence, imported text, generated output, and quality report restore correctly.
-14. Click Export Application Package only after manual verification.
-15. Confirm the export folder contains the CV PDF, covering letter PDF, quality report, and summary JSON.
+5. Run Job Fit Analyzer.
+6. Confirm the fit strategy is truthful and not chasing unsupported keywords.
+7. Generate a tailored CV.
+8. Generate a tailored covering letter.
+9. Run Quality Check on both document types.
+10. Run AI Quality Review.
+11. Click Improve with Quality Fixes.
+12. Save the application workspace.
+13. Close and reopen the app.
+14. Load the saved application workspace.
+15. Confirm structured evidence, job fit analysis, imported text, generated output, and quality report restore correctly.
+16. Click Export Application Package only after manual verification.
+17. Confirm the export folder contains the CV PDF, covering letter PDF, quality report, and summary JSON.
 
 ## Git workflow
 
@@ -165,11 +189,11 @@ Use GitHub Desktop. Keep each major feature on its own branch until tested.
 Recommended branch:
 
 ```text
-feature/structured-evidence-builder
+feature/job-fit-analyzer
 ```
 
 Recommended commit for this update:
 
 ```text
-Add structured evidence builder
+Add Ollama job fit analyzer
 ```
