@@ -36,6 +36,7 @@
 - Added app settings persistence for AI, templates, PDF, and folders
 - Replaced crowded tabs with a sidebar workflow and skip options
 - Removed redundant Next navigation from the sidebar workflow
+- Added modern GUI visual polish with cleaner spacing, typography, sidebar highlighting, and styled text areas
 
 ## Next
 
@@ -57,3 +58,13 @@
 - Removed redundant **Next** button.
 - Kept **Back**, **Skip & Continue**, and **Complete & Continue**.
 - Completion now advances the user automatically to the next workflow step.
+
+
+## Step 21 modern GUI polish
+
+- Added a modern theme layer for the existing sidebar workflow.
+- Increased default window size.
+- Added active-step sidebar highlighting.
+- Added distinct complete and warning sidebar styles.
+- Styled text areas for better readability.
+- Added CustomTkinter dependency for a modern UI base while keeping the existing workflow logic stable.

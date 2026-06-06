@@ -11,6 +11,7 @@ Resume AI 2 is a local desktop application for tailoring CVs and covering letter
 - AI-powered Job Fit Analyzer using Ollama before generation
 - App settings persistence for AI, template, PDF, and folder defaults
 - Sidebar workflow GUI with step status, skip options, and simplified navigation
+- Modern visual theme with cleaner spacing, updated typography, highlighted workflow steps, and styled text areas
 - Existing CV and covering letter input
 - Existing PDF CV/covering-letter import
 - PDF/text job description import
@@ -41,6 +42,14 @@ Resume AI 2 is a local desktop application for tailoring CVs and covering letter
 - Package export with final PDFs, Markdown sources, quality report, and summary JSON
 
 ## Run the app
+
+Install or update dependencies first:
+
+```bash
+pip install -r requirements.txt
+```
+
+Then run:
 
 ```bash
 python app.py
@@ -166,6 +175,22 @@ Each step shows a status marker:
 
 Required steps cannot be skipped. Optional steps can be skipped, but the app warns when skipping may reduce output quality. The top navigation uses **Back**, **Skip & Continue**, and **Complete & Continue** so there is no redundant generic Next action. The goal is workflow clarity: the user should always know what to do next.
 
+## Modern GUI update
+
+The app now has a cleaner modern visual shell while keeping the existing sidebar workflow and app logic stable. The update improves:
+
+```text
+- Sidebar highlighting for the current step
+- Softer background and card-like surfaces
+- Cleaner button and input styling
+- Larger default window size
+- More readable text areas
+- Consistent Segoe UI typography
+- Better spacing around the workflow content
+```
+
+This is an incremental modernization, not a risky full rewrite. The app imports CustomTkinter when available and still falls back safely if the dependency is missing.
+
 ## App settings persistence
 
 The app now saves non-secret preferences locally under:
@@ -245,13 +270,13 @@ Use GitHub Desktop. Keep each major feature on its own branch until tested.
 Recommended branch:
 
 ```text
-feature/sidebar-workflow-gui
+feature/gui-visual-polish
 ```
 
 Recommended commit for this update:
 
 ```text
-Replace tabs with sidebar workflow
+Improve GUI visual layout and usability
 ```
 
 
@@ -265,3 +290,13 @@ Prompt preview now opens in a dedicated preview window instead of writing to the
 - Renamed **Skip This Step** to **Skip & Continue**.
 - Renamed **Mark Step Complete** to **Complete & Continue**.
 - Completing a step now moves directly to the next step.
+
+
+## Step 21 modern GUI polish
+
+- Added a modern visual theme layer.
+- Increased default app size for a less cramped workflow.
+- Highlighted the active sidebar step.
+- Styled complete and warning workflow states.
+- Improved text area readability.
+- Added CustomTkinter as an optional modern UI dependency while preserving the current Tkinter/ttk implementation.

@@ -8,6 +8,11 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 from tkinter import ttk
 
+try:
+    import customtkinter as ctk
+except ImportError:  # The app still runs if the dependency has not been installed yet.
+    ctk = None
+
 from .ai_service import AIService
 from .application_package_exporter import export_application_package
 from .document_importer import load_document_text
@@ -52,12 +57,15 @@ GENERATION_MODES = [
 ]
 
 
-class ResumeAIApp(tk.Tk):
+class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
     def __init__(self) -> None:
+        if ctk is not None:
+            ctk.set_appearance_mode("light")
+            ctk.set_default_color_theme("blue")
         super().__init__()
         self.title("Resume AI 2")
-        self.geometry("1120x800")
-        self.minsize(980, 680)
+        self.geometry("1280x860")
+        self.minsize(1100, 720)
 
         self.ai_service = AIService()
         self.app_settings = load_app_settings()
@@ -127,7 +135,132 @@ class ResumeAIApp(tk.Tk):
         self._load_saved_profile()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
+    def _configure_visual_theme(self) -> None:
+        """Apply the modern visual system without rewriting the app logic."""
+        self.ui_colors = {
+            "bg": "#f6f8fb",
+            "surface": "#ffffff",
+            "sidebar": "#eef3f8",
+            "border": "#d7dee8",
+            "text": "#111827",
+            "muted": "#5b6675",
+            "accent": "#2563eb",
+            "accent_hover": "#1d4ed8",
+            "accent_soft": "#dbeafe",
+            "warning_soft": "#fff7ed",
+            "success_soft": "#ecfdf5",
+            "danger": "#b91c1c",
+        }
+        colors = self.ui_colors
+        try:
+            self.configure(bg=colors["bg"])
+        except tk.TclError:
+            pass
+
+        self.option_add("*Font", "{Segoe UI} 10")
+        self.option_add("*TCombobox*Listbox.font", "{Segoe UI} 10")
+
+        style = ttk.Style(self)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+
+        style.configure("TFrame", background=colors["bg"])
+        style.configure("Content.TFrame", background=colors["bg"])
+        style.configure("Sidebar.TFrame", background=colors["sidebar"])
+        style.configure("Card.TFrame", background=colors["surface"], relief="flat")
+
+        style.configure("TLabel", background=colors["bg"], foreground=colors["text"], font="{Segoe UI} 10")
+        style.configure("Sidebar.TLabel", background=colors["sidebar"], foreground=colors["text"], font="{Segoe UI} 10")
+        style.configure("Muted.TLabel", background=colors["bg"], foreground=colors["muted"], font="{Segoe UI} 9")
+        style.configure("SidebarMuted.TLabel", background=colors["sidebar"], foreground=colors["muted"], font="{Segoe UI} 9")
+        style.configure("Title.TLabel", background=colors["bg"], foreground=colors["text"], font="{Segoe UI} 19 bold")
+        style.configure("AppTitle.TLabel", background=colors["sidebar"], foreground=colors["text"], font="{Segoe UI} 16 bold")
+
+        style.configure(
+            "TButton",
+            font="{Segoe UI} 10",
+            padding=(12, 7),
+            background=colors["surface"],
+            foreground=colors["text"],
+            bordercolor=colors["border"],
+            focusthickness=1,
+            focuscolor=colors["accent_soft"],
+        )
+        style.map(
+            "TButton",
+            background=[("active", "#eef2ff"), ("disabled", "#eef2f7")],
+            foreground=[("disabled", "#9aa4b2")],
+            bordercolor=[("focus", colors["accent"]), ("active", colors["accent"])],
+        )
+        style.configure(
+            "Accent.TButton",
+            background=colors["accent"],
+            foreground="#ffffff",
+            bordercolor=colors["accent"],
+        )
+        style.map(
+            "Accent.TButton",
+            background=[("active", colors["accent_hover"]), ("disabled", "#93c5fd")],
+            foreground=[("disabled", "#eff6ff")],
+        )
+        style.configure("Sidebar.TButton", anchor="w", padding=(12, 8), background=colors["sidebar"], bordercolor=colors["sidebar"])
+        style.map("Sidebar.TButton", background=[("active", "#e2e8f0")])
+        style.configure("SidebarSelected.TButton", anchor="w", padding=(12, 8), background=colors["accent_soft"], foreground=colors["accent"], bordercolor=colors["accent_soft"])
+        style.map("SidebarSelected.TButton", background=[("active", "#bfdbfe")])
+        style.configure("SidebarComplete.TButton", anchor="w", padding=(12, 8), background=colors["success_soft"], foreground="#047857", bordercolor=colors["success_soft"])
+        style.configure("SidebarWarning.TButton", anchor="w", padding=(12, 8), background=colors["warning_soft"], foreground="#b45309", bordercolor=colors["warning_soft"])
+
+        style.configure("TEntry", fieldbackground=colors["surface"], foreground=colors["text"], insertcolor=colors["accent"], padding=(8, 6), bordercolor=colors["border"])
+        style.map("TEntry", bordercolor=[("focus", colors["accent"]), ("disabled", colors["border"])])
+        style.configure("TCombobox", fieldbackground=colors["surface"], foreground=colors["text"], padding=(8, 6), bordercolor=colors["border"])
+        style.map("TCombobox", fieldbackground=[("readonly", colors["surface"])], bordercolor=[("focus", colors["accent"])])
+
+        style.configure("TLabelframe", background=colors["bg"], bordercolor=colors["border"], relief="solid")
+        style.configure("TLabelframe.Label", background=colors["bg"], foreground=colors["text"], font="{Segoe UI} 10 bold")
+        style.configure("Horizontal.TSeparator", background=colors["border"])
+
+    def _style_text_widget(self, widget: tk.Text) -> None:
+        colors = getattr(self, "ui_colors", {})
+        widget.configure(
+            background=colors.get("surface", "#ffffff"),
+            foreground=colors.get("text", "#111827"),
+            insertbackground=colors.get("accent", "#2563eb"),
+            selectbackground="#bfdbfe",
+            selectforeground=colors.get("text", "#111827"),
+            relief="flat",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=colors.get("border", "#d7dee8"),
+            highlightcolor=colors.get("accent", "#2563eb"),
+            padx=10,
+            pady=8,
+            font="{Segoe UI} 10",
+        )
+
+    def _apply_visual_theme_to_children(self, widget: tk.Widget | None = None) -> None:
+        if widget is None:
+            widget = self
+        for child in widget.winfo_children():
+            if isinstance(child, tk.Text):
+                self._style_text_widget(child)
+            elif isinstance(child, tk.Listbox):
+                colors = getattr(self, "ui_colors", {})
+                child.configure(
+                    background=colors.get("surface", "#ffffff"),
+                    foreground=colors.get("text", "#111827"),
+                    selectbackground=colors.get("accent_soft", "#dbeafe"),
+                    selectforeground=colors.get("text", "#111827"),
+                    relief="flat",
+                    highlightthickness=1,
+                    highlightbackground=colors.get("border", "#d7dee8"),
+                    font="{Segoe UI} 10",
+                )
+            self._apply_visual_theme_to_children(child)
+
     def _build_ui(self) -> None:
+        self._configure_visual_theme()
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
 
@@ -188,25 +321,25 @@ class ResumeAIApp(tk.Tk):
             },
         ]
 
-        shell = ttk.Frame(self)
+        shell = ttk.Frame(self, style="Content.TFrame")
         shell.grid(row=0, column=0, sticky="nsew")
         shell.columnconfigure(1, weight=1)
         shell.rowconfigure(0, weight=1)
 
-        sidebar = ttk.Frame(shell, padding=(12, 12))
+        sidebar = ttk.Frame(shell, padding=(16, 16), style="Sidebar.TFrame")
         sidebar.grid(row=0, column=0, sticky="ns")
         sidebar.columnconfigure(0, weight=1)
 
-        ttk.Label(sidebar, text="Resume AI 2", font=("Segoe UI", 14, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 4))
+        ttk.Label(sidebar, text="Resume AI 2", style="AppTitle.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 4))
         ttk.Label(
             sidebar,
             text="Guided workflow",
-            foreground="#555555",
-        ).grid(row=1, column=0, sticky="w", pady=(0, 12))
+            style="SidebarMuted.TLabel",
+        ).grid(row=1, column=0, sticky="w", pady=(0, 16))
 
         for index, step in enumerate(self.workflow_steps, start=2):
             key = str(step["key"])
-            button = ttk.Button(sidebar, text=str(step["label"]), command=lambda step_key=key: self._show_workflow_step(step_key))
+            button = ttk.Button(sidebar, text=str(step["label"]), style="Sidebar.TButton", command=lambda step_key=key: self._show_workflow_step(step_key))
             button.grid(row=index, column=0, sticky="ew", pady=3)
             self.workflow_buttons[key] = button
 
@@ -215,29 +348,29 @@ class ResumeAIApp(tk.Tk):
             sidebar,
             text="Status legend:\n✓ complete\n○ not started\n⚠ needs attention\n↷ skipped",
             justify="left",
-            foreground="#555555",
+            style="SidebarMuted.TLabel",
         ).grid(row=len(self.workflow_steps) + 3, column=0, sticky="w")
 
-        content_shell = ttk.Frame(shell, padding=(10, 12, 12, 12))
+        content_shell = ttk.Frame(shell, padding=(18, 18, 18, 14), style="Content.TFrame")
         content_shell.grid(row=0, column=1, sticky="nsew")
         content_shell.columnconfigure(0, weight=1)
         content_shell.rowconfigure(2, weight=1)
 
-        header = ttk.Frame(content_shell)
+        header = ttk.Frame(content_shell, style="Content.TFrame")
         header.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         header.columnconfigure(0, weight=1)
-        ttk.Label(header, textvariable=self.workflow_title_var, font=("Segoe UI", 16, "bold")).grid(row=0, column=0, sticky="w")
-        ttk.Label(header, textvariable=self.workflow_progress_var, foreground="#555555").grid(row=0, column=1, sticky="e")
+        ttk.Label(header, textvariable=self.workflow_title_var, style="Title.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(header, textvariable=self.workflow_progress_var, style="Muted.TLabel").grid(row=0, column=1, sticky="e")
         ttk.Label(header, textvariable=self.workflow_hint_var, wraplength=860).grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
-        navigation = ttk.Frame(content_shell)
+        navigation = ttk.Frame(content_shell, style="Content.TFrame")
         navigation.grid(row=1, column=0, sticky="ew", pady=(0, 8))
         navigation.columnconfigure(3, weight=1)
         self.back_step_button = ttk.Button(navigation, text="Back", command=self._previous_workflow_step)
         self.back_step_button.grid(row=0, column=0, padx=(0, 6))
         self.skip_step_button = ttk.Button(navigation, text="Skip & Continue", command=self._skip_current_workflow_step)
         self.skip_step_button.grid(row=0, column=1, padx=(0, 6))
-        self.complete_step_button = ttk.Button(navigation, text="Complete & Continue", command=self._mark_current_step_complete)
+        self.complete_step_button = ttk.Button(navigation, text="Complete & Continue", style="Accent.TButton", command=self._mark_current_step_complete)
         self.complete_step_button.grid(row=0, column=2, padx=(0, 6))
         ttk.Label(
             navigation,
@@ -271,7 +404,7 @@ class ResumeAIApp(tk.Tk):
             builders[key](frame)
             self.workflow_frames[key] = frame
 
-        footer = ttk.Frame(self, padding=(12, 8))
+        footer = ttk.Frame(self, padding=(18, 10), style="Content.TFrame")
         footer.grid(row=1, column=0, sticky="ew")
         footer.columnconfigure(0, weight=1)
 
@@ -280,6 +413,7 @@ class ResumeAIApp(tk.Tk):
         ttk.Button(footer, text="Save Application", command=lambda: self._save_application_workspace(save_as=False)).grid(row=0, column=2, padx=6)
         ttk.Button(footer, text="Export Application Package", command=self._export_application_package).grid(row=0, column=3, padx=6)
 
+        self._apply_visual_theme_to_children()
         self._show_workflow_step("workspace")
         self._refresh_workflow_statuses()
 
@@ -448,7 +582,15 @@ class ResumeAIApp(tk.Tk):
             symbol = self._workflow_step_symbol(key)
             button = self.workflow_buttons.get(key)
             if button is not None:
-                button.configure(text=f"{symbol} {label}")
+                if key == self.current_workflow_step_key:
+                    button_style = "SidebarSelected.TButton"
+                elif symbol == "✓":
+                    button_style = "SidebarComplete.TButton"
+                elif symbol == "⚠":
+                    button_style = "SidebarWarning.TButton"
+                else:
+                    button_style = "Sidebar.TButton"
+                button.configure(text=f"{symbol}  {label}", style=button_style)
 
     def _build_workspace_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(1, weight=1)
@@ -1337,6 +1479,7 @@ class ResumeAIApp(tk.Tk):
 
         preview_text = tk.Text(text_frame, wrap="word")
         preview_text.grid(row=0, column=0, sticky="nsew")
+        self._style_text_widget(preview_text)
         scrollbar = ttk.Scrollbar(text_frame, orient="vertical", command=preview_text.yview)
         scrollbar.grid(row=0, column=1, sticky="ns")
         preview_text.configure(yscrollcommand=scrollbar.set)
