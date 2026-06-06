@@ -56,6 +56,12 @@ GENERATION_MODES = [
     "Aggressive",
 ]
 
+UI_THEME_OPTIONS = [
+    "Light",
+    "Soft Blue",
+    "Dark",
+]
+
 
 class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
     def __init__(self) -> None:
@@ -69,6 +75,7 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
 
         self.ai_service = AIService()
         self.app_settings = load_app_settings()
+        self.ui_theme_var = tk.StringVar(value=getattr(self.app_settings, "ui_theme", "Light") or "Light")
         self.single_line_fields: dict[str, tk.StringVar] = {}
         self.multi_line_fields: dict[str, tk.Text] = {}
         self.template_var = tk.StringVar(value=self.app_settings.template_name)
@@ -125,9 +132,9 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         self.workflow_step_status: dict[str, str] = {}
         self.workflow_steps: list[dict[str, object]] = []
         self.skipped_workflow_steps: set[str] = set()
-        self.current_workflow_step_key = "workspace"
-        self.workflow_title_var = tk.StringVar(value="Workspace")
-        self.workflow_hint_var = tk.StringVar(value="Start by creating or loading an application workspace.")
+        self.current_workflow_step_key = "welcome"
+        self.workflow_title_var = tk.StringVar(value="Welcome")
+        self.workflow_hint_var = tk.StringVar(value="Understand the app workflow before creating a job application package.")
         self.workflow_progress_var = tk.StringVar(value="")
         self.application_package_exported = False
 
@@ -136,22 +143,73 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _configure_visual_theme(self) -> None:
-        """Apply the modern visual system without rewriting the app logic."""
-        self.ui_colors = {
-            "bg": "#f6f8fb",
-            "surface": "#ffffff",
-            "sidebar": "#eef3f8",
-            "border": "#d7dee8",
-            "text": "#111827",
-            "muted": "#5b6675",
-            "accent": "#2563eb",
-            "accent_hover": "#1d4ed8",
-            "accent_soft": "#dbeafe",
-            "warning_soft": "#fff7ed",
-            "success_soft": "#ecfdf5",
-            "danger": "#b91c1c",
+        """Apply the visual system without rewriting the app logic."""
+        theme_name = "Light"
+        if hasattr(self, "ui_theme_var"):
+            theme_name = self.ui_theme_var.get().strip() or "Light"
+        elif hasattr(self, "app_settings"):
+            theme_name = getattr(self.app_settings, "ui_theme", "Light") or "Light"
+
+        theme_palettes = {
+            "Light": {
+                "bg": "#f6f8fb",
+                "surface": "#ffffff",
+                "sidebar": "#eef3f8",
+                "border": "#d7dee8",
+                "text": "#111827",
+                "muted": "#5b6675",
+                "accent": "#2563eb",
+                "accent_hover": "#1d4ed8",
+                "accent_soft": "#dbeafe",
+                "warning_soft": "#fff7ed",
+                "success_soft": "#ecfdf5",
+                "danger": "#b91c1c",
+                "text_select": "#bfdbfe",
+                "button_active": "#eef2ff",
+                "button_disabled": "#eef2f7",
+            },
+            "Soft Blue": {
+                "bg": "#eef5ff",
+                "surface": "#ffffff",
+                "sidebar": "#dbeafe",
+                "border": "#bfdbfe",
+                "text": "#102033",
+                "muted": "#486179",
+                "accent": "#0f63d7",
+                "accent_hover": "#0b4fb3",
+                "accent_soft": "#cfe4ff",
+                "warning_soft": "#fff3db",
+                "success_soft": "#e4f7ef",
+                "danger": "#9f1239",
+                "text_select": "#b7d8ff",
+                "button_active": "#dcecff",
+                "button_disabled": "#e8f0fb",
+            },
+            "Dark": {
+                "bg": "#111827",
+                "surface": "#1f2937",
+                "sidebar": "#0f172a",
+                "border": "#374151",
+                "text": "#f9fafb",
+                "muted": "#cbd5e1",
+                "accent": "#60a5fa",
+                "accent_hover": "#3b82f6",
+                "accent_soft": "#1e3a5f",
+                "warning_soft": "#3a2a12",
+                "success_soft": "#0f3b2e",
+                "danger": "#fca5a5",
+                "text_select": "#2563eb",
+                "button_active": "#263244",
+                "button_disabled": "#1f2937",
+            },
         }
+        self.ui_colors = theme_palettes.get(theme_name, theme_palettes["Light"])
         colors = self.ui_colors
+
+        if ctk is not None:
+            ctk.set_appearance_mode("dark" if theme_name == "Dark" else "light")
+            ctk.set_default_color_theme("blue")
+
         try:
             self.configure(bg=colors["bg"])
         except tk.TclError:
@@ -190,14 +248,14 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         )
         style.map(
             "TButton",
-            background=[("active", "#eef2ff"), ("disabled", "#eef2f7")],
-            foreground=[("disabled", "#9aa4b2")],
+            background=[("active", colors["button_active"]), ("disabled", colors["button_disabled"])],
+            foreground=[("disabled", "#8b95a5")],
             bordercolor=[("focus", colors["accent"]), ("active", colors["accent"])],
         )
         style.configure(
             "Accent.TButton",
             background=colors["accent"],
-            foreground="#ffffff",
+            foreground="#ffffff" if theme_name != "Dark" else "#0b1220",
             bordercolor=colors["accent"],
         )
         style.map(
@@ -205,17 +263,17 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
             background=[("active", colors["accent_hover"]), ("disabled", "#93c5fd")],
             foreground=[("disabled", "#eff6ff")],
         )
-        style.configure("Sidebar.TButton", anchor="w", padding=(12, 8), background=colors["sidebar"], bordercolor=colors["sidebar"])
-        style.map("Sidebar.TButton", background=[("active", "#e2e8f0")])
+        style.configure("Sidebar.TButton", anchor="w", padding=(12, 8), background=colors["sidebar"], foreground=colors["text"], bordercolor=colors["sidebar"])
+        style.map("Sidebar.TButton", background=[("active", colors["button_active"])])
         style.configure("SidebarSelected.TButton", anchor="w", padding=(12, 8), background=colors["accent_soft"], foreground=colors["accent"], bordercolor=colors["accent_soft"])
-        style.map("SidebarSelected.TButton", background=[("active", "#bfdbfe")])
-        style.configure("SidebarComplete.TButton", anchor="w", padding=(12, 8), background=colors["success_soft"], foreground="#047857", bordercolor=colors["success_soft"])
-        style.configure("SidebarWarning.TButton", anchor="w", padding=(12, 8), background=colors["warning_soft"], foreground="#b45309", bordercolor=colors["warning_soft"])
+        style.map("SidebarSelected.TButton", background=[("active", colors["accent_soft"])])
+        style.configure("SidebarComplete.TButton", anchor="w", padding=(12, 8), background=colors["success_soft"], foreground="#047857" if theme_name != "Dark" else "#6ee7b7", bordercolor=colors["success_soft"])
+        style.configure("SidebarWarning.TButton", anchor="w", padding=(12, 8), background=colors["warning_soft"], foreground="#b45309" if theme_name != "Dark" else "#fdba74", bordercolor=colors["warning_soft"])
 
         style.configure("TEntry", fieldbackground=colors["surface"], foreground=colors["text"], insertcolor=colors["accent"], padding=(8, 6), bordercolor=colors["border"])
         style.map("TEntry", bordercolor=[("focus", colors["accent"]), ("disabled", colors["border"])])
         style.configure("TCombobox", fieldbackground=colors["surface"], foreground=colors["text"], padding=(8, 6), bordercolor=colors["border"])
-        style.map("TCombobox", fieldbackground=[("readonly", colors["surface"])], bordercolor=[("focus", colors["accent"])])
+        style.map("TCombobox", fieldbackground=[("readonly", colors["surface"])], foreground=[("readonly", colors["text"])], bordercolor=[("focus", colors["accent"])])
 
         style.configure("TLabelframe", background=colors["bg"], bordercolor=colors["border"], relief="solid")
         style.configure("TLabelframe.Label", background=colors["bg"], foreground=colors["text"], font="{Segoe UI} 10 bold")
@@ -227,7 +285,7 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
             background=colors.get("surface", "#ffffff"),
             foreground=colors.get("text", "#111827"),
             insertbackground=colors.get("accent", "#2563eb"),
-            selectbackground="#bfdbfe",
+            selectbackground=colors.get("text_select", "#bfdbfe"),
             selectforeground=colors.get("text", "#111827"),
             relief="flat",
             borderwidth=1,
@@ -261,10 +319,17 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
 
     def _build_ui(self) -> None:
         self._configure_visual_theme()
+        self._build_menu_bar()
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
 
         self.workflow_steps = [
+            {
+                "key": "welcome",
+                "label": "Welcome",
+                "required": False,
+                "hint": "Understand the app workflow before creating a job application package.",
+            },
             {
                 "key": "workspace",
                 "label": "Workspace",
@@ -312,12 +377,6 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
                 "label": "Export",
                 "required": True,
                 "hint": "Review generated documents and export PDFs or a complete application package.",
-            },
-            {
-                "key": "settings",
-                "label": "Settings",
-                "required": False,
-                "hint": "Configure AI provider, model, timeout, templates, and saved app defaults.",
             },
         ]
 
@@ -375,7 +434,7 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         ttk.Label(
             navigation,
             text="Complete required steps. Skip optional steps only when the quality tradeoff is acceptable.",
-            foreground="#555555",
+            style="Muted.TLabel",
         ).grid(row=0, column=3, sticky="e")
 
         self.workflow_content = ttk.Frame(content_shell)
@@ -384,6 +443,7 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         self.workflow_content.rowconfigure(0, weight=1)
 
         builders = {
+            "welcome": self._build_welcome_step,
             "workspace": self._build_workspace_tab,
             "profile": self._build_profile_workflow_step,
             "evidence": self._build_evidence_tab,
@@ -392,7 +452,6 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
             "generate": self._build_generate_workflow_step,
             "review": self._build_quality_tab,
             "export": self._build_output_tab,
-            "settings": self._build_ai_tab,
         }
 
         for step in self.workflow_steps:
@@ -414,8 +473,253 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         ttk.Button(footer, text="Export Application Package", command=self._export_application_package).grid(row=0, column=3, padx=6)
 
         self._apply_visual_theme_to_children()
-        self._show_workflow_step("workspace")
+        self._show_workflow_step("welcome")
         self._refresh_workflow_statuses()
+
+    def _build_menu_bar(self) -> None:
+        menubar = tk.Menu(self)
+
+        file_menu = tk.Menu(menubar, tearoff=False)
+        file_menu.add_command(label="New Application", command=self._new_application_workspace)
+        file_menu.add_command(label="Load Application...", command=self._load_application_workspace)
+        file_menu.add_separator()
+        file_menu.add_command(label="Save Application", command=lambda: self._save_application_workspace(save_as=False))
+        file_menu.add_command(label="Save Application As...", command=lambda: self._save_application_workspace(save_as=True))
+        file_menu.add_separator()
+        file_menu.add_command(label="Export Application Package", command=self._export_application_package)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self._on_close)
+        menubar.add_cascade(label="File", menu=file_menu)
+
+        workflow_menu = tk.Menu(menubar, tearoff=False)
+        workflow_targets = [
+            ("Welcome", "welcome"),
+            ("Workspace", "workspace"),
+            ("Profile", "profile"),
+            ("Evidence", "evidence"),
+            ("Job Description", "job"),
+            ("Job Fit", "job_fit"),
+            ("Generate", "generate"),
+            ("Review", "review"),
+            ("Export", "export"),
+        ]
+        for label, key in workflow_targets:
+            workflow_menu.add_command(label=label, command=lambda step_key=key: self._show_workflow_step(step_key))
+        menubar.add_cascade(label="Workflow", menu=workflow_menu)
+
+        settings_menu = tk.Menu(menubar, tearoff=False)
+        settings_menu.add_command(label="Open Settings...", command=self._open_settings_window)
+        settings_menu.add_separator()
+        theme_menu = tk.Menu(settings_menu, tearoff=False)
+        for theme_name in UI_THEME_OPTIONS:
+            theme_menu.add_radiobutton(
+                label=theme_name,
+                variable=self.ui_theme_var,
+                value=theme_name,
+                command=lambda name=theme_name: self._set_ui_theme(name),
+            )
+        settings_menu.add_cascade(label="UI Theme", menu=theme_menu)
+        settings_menu.add_separator()
+        settings_menu.add_command(label="Save App Settings", command=lambda: self._save_app_settings(show_message=True))
+        settings_menu.add_command(label="Reset App Settings", command=self._reset_app_settings)
+        menubar.add_cascade(label="Settings", menu=settings_menu)
+
+        help_menu = tk.Menu(menubar, tearoff=False)
+        help_menu.add_command(label="Welcome", command=lambda: self._show_workflow_step("welcome"))
+        help_menu.add_command(label="Workflow Help", command=lambda: self._show_help_window("Workflow Help", self._workflow_help_text()))
+        help_menu.add_command(label="Menu and Options Help", command=lambda: self._show_help_window("Menu and Options Help", self._options_help_text()))
+        help_menu.add_separator()
+        help_menu.add_command(label="About Resume AI 2", command=lambda: self._show_help_window("About Resume AI 2", self._about_text()))
+        menubar.add_cascade(label="Help", menu=help_menu)
+
+        self.configure(menu=menubar)
+
+    def _set_ui_theme(self, theme_name: str) -> None:
+        if theme_name not in UI_THEME_OPTIONS:
+            theme_name = "Light"
+        self.ui_theme_var.set(theme_name)
+        self._configure_visual_theme()
+        self._apply_visual_theme_to_children()
+        self._refresh_workflow_statuses()
+        self._save_app_settings(show_message=False)
+        self.status_var.set(f"Theme changed to {theme_name}")
+
+    def _open_settings_window(self) -> None:
+        if hasattr(self, "settings_window") and self.settings_window is not None:
+            try:
+                if self.settings_window.winfo_exists():
+                    self.settings_window.lift()
+                    self.settings_window.focus_force()
+                    return
+            except tk.TclError:
+                pass
+
+        window = tk.Toplevel(self)
+        self.settings_window = window
+        window.title("Settings")
+        window.geometry("920x640")
+        window.minsize(760, 520)
+        window.configure(bg=self.ui_colors.get("bg", "#f6f8fb"))
+        window.columnconfigure(0, weight=1)
+        window.rowconfigure(0, weight=1)
+
+        container = ttk.Frame(window, padding=18, style="Content.TFrame")
+        container.grid(row=0, column=0, sticky="nsew")
+        container.columnconfigure(0, weight=1)
+        container.rowconfigure(2, weight=1)
+
+        ttk.Label(container, text="Settings", style="Title.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(
+            container,
+            text="Configure AI provider, models, timeouts, templates, export defaults, and UI theme. API keys are not saved.",
+            wraplength=820,
+        ).grid(row=1, column=0, sticky="w", pady=(4, 12))
+
+        settings_frame = ttk.Frame(container, style="Content.TFrame")
+        settings_frame.grid(row=2, column=0, sticky="nsew")
+        settings_frame.columnconfigure(0, weight=1)
+        settings_frame.rowconfigure(0, weight=1)
+        self._build_ai_tab(settings_frame)
+
+        footer = ttk.Frame(container, style="Content.TFrame")
+        footer.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+        footer.columnconfigure(0, weight=1)
+        ttk.Button(footer, text="Close", command=window.destroy).grid(row=0, column=1, sticky="e")
+        self._apply_visual_theme_to_children(window)
+
+    def _show_help_window(self, title: str, content: str) -> None:
+        window = tk.Toplevel(self)
+        window.title(title)
+        window.geometry("780x620")
+        window.minsize(640, 440)
+        window.configure(bg=self.ui_colors.get("bg", "#f6f8fb"))
+        window.columnconfigure(0, weight=1)
+        window.rowconfigure(0, weight=1)
+
+        container = ttk.Frame(window, padding=18, style="Content.TFrame")
+        container.grid(row=0, column=0, sticky="nsew")
+        container.columnconfigure(0, weight=1)
+        container.rowconfigure(1, weight=1)
+        ttk.Label(container, text=title, style="Title.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 8))
+        text = tk.Text(container, wrap="word")
+        text.grid(row=1, column=0, sticky="nsew")
+        text.insert("1.0", content)
+        text.configure(state="disabled")
+        ttk.Button(container, text="Close", command=window.destroy).grid(row=2, column=0, sticky="e", pady=(10, 0))
+        self._apply_visual_theme_to_children(window)
+
+    def _workflow_help_text(self) -> str:
+        return (
+            "Recommended workflow\n\n"
+            "1. Welcome: read the high-level process.\n"
+            "2. Workspace: create or load one saved application package per job.\n"
+            "3. Profile: add contact details, career background, and existing CV/covering-letter material.\n"
+            "4. Evidence: add structured proof. This is what makes the AI output specific instead of generic.\n"
+            "5. Job Description: paste the full job description. Do not summarize it too aggressively.\n"
+            "6. Job Fit: use Ollama to identify supported, weak, and risky job signals.\n"
+            "7. Generate: create the tailored CV and covering letter.\n"
+            "8. Review: run rule-based quality checks and optional AI review.\n"
+            "9. Export: export PDFs or the complete application package.\n\n"
+            "Required steps cannot be skipped. Optional steps can be skipped, but quality may drop."
+        )
+
+    def _options_help_text(self) -> str:
+        return (
+            "Top menu options\n\n"
+            "File\n"
+            "- New Application: clears the current workspace and starts a new job application.\n"
+            "- Load Application: loads a saved JSON workspace.\n"
+            "- Save Application / Save Application As: saves the current workspace.\n"
+            "- Export Application Package: exports the CV, covering letter, Markdown sources, quality report, and summary JSON.\n\n"
+            "Workflow\n"
+            "- Jump directly to any workflow step without using the sidebar.\n\n"
+            "Settings\n"
+            "- Open Settings: configure Ollama, OpenAI, generation mode, timeout, templates, and export defaults.\n"
+            "- UI Theme: switch between Light, Soft Blue, and Dark.\n"
+            "- Save App Settings: saves non-secret defaults locally.\n"
+            "- Reset App Settings: restores defaults.\n\n"
+            "Help\n"
+            "- Opens this help, the welcome page, or app information.\n\n"
+            "Important: OpenAI session API keys are not saved. Keep secrets out of GitHub."
+        )
+
+    def _about_text(self) -> str:
+        return (
+            "Resume AI 2\n\n"
+            "A local-first application for tailoring CVs and covering letters to specific job descriptions.\n\n"
+            "Core capabilities:\n"
+            "- Structured candidate profile and evidence collection\n"
+            "- Ollama local AI support\n"
+            "- Optional OpenAI provider support\n"
+            "- Job fit analysis\n"
+            "- CV and covering-letter generation\n"
+            "- Rule-based and AI-assisted quality review\n"
+            "- PDF export and complete application package export\n\n"
+            "This app helps draft and review documents. It does not verify whether claims are true. The user must verify every claim before submitting."
+        )
+
+    def _build_welcome_step(self, parent: ttk.Frame) -> None:
+        parent.columnconfigure(0, weight=1)
+        parent.columnconfigure(1, weight=2)
+        parent.rowconfigure(1, weight=1)
+
+        logo_frame = ttk.LabelFrame(parent, text="Logo placeholder", padding=18)
+        logo_frame.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(0, 16), pady=(0, 10))
+        logo_frame.columnconfigure(0, weight=1)
+        logo_frame.rowconfigure(0, weight=1)
+        logo_label = ttk.Label(
+            logo_frame,
+            text="Resume AI 2\n\n[ Future logo here ]",
+            justify="center",
+            anchor="center",
+            style="Title.TLabel",
+        )
+        logo_label.grid(row=0, column=0, sticky="nsew")
+
+        intro = ttk.LabelFrame(parent, text="Welcome", padding=16)
+        intro.grid(row=0, column=1, sticky="nsew", pady=(0, 10))
+        intro.columnconfigure(0, weight=1)
+        ttk.Label(
+            intro,
+            text=(
+                "Resume AI 2 helps you build a tailored CV and covering letter for one job application at a time. "
+                "It uses your profile, structured evidence, the job description, and optional job-fit analysis to generate stronger, safer documents."
+            ),
+            wraplength=760,
+        ).grid(row=0, column=0, sticky="w", pady=(0, 10))
+        ttk.Label(
+            intro,
+            text=(
+                "The app is local-first. Ollama can run AI on your machine, while OpenAI is available as an optional provider. "
+                "Generated text still needs human verification before you submit anything."
+            ),
+            wraplength=760,
+        ).grid(row=1, column=0, sticky="w")
+
+        quick_start = ttk.LabelFrame(parent, text="Quick start", padding=16)
+        quick_start.grid(row=1, column=1, sticky="nsew")
+        quick_start.columnconfigure(0, weight=1)
+        quick_text = tk.Text(quick_start, height=14, wrap="word")
+        quick_text.grid(row=0, column=0, sticky="nsew")
+        quick_text.insert(
+            "1.0",
+            "1. Create or load an application workspace.\n"
+            "2. Fill the Profile step with real contact and career information.\n"
+            "3. Add structured Evidence for projects, jobs, studies, and achievements.\n"
+            "4. Paste the complete Job Description.\n"
+            "5. Run Job Fit if you want the AI to identify safe positioning.\n"
+            "6. Generate the CV and covering letter.\n"
+            "7. Review quality warnings before exporting.\n"
+            "8. Export the complete application package.\n\n"
+            "Use the top Settings menu to configure AI models, timeouts, PDF defaults, and UI theme. Use Help for explanations of all main options.",
+        )
+        quick_text.configure(state="disabled")
+
+        actions = ttk.Frame(parent, style="Content.TFrame")
+        actions.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        ttk.Button(actions, text="Start Workflow", style="Accent.TButton", command=lambda: self._show_workflow_step("workspace")).pack(side="left")
+        ttk.Button(actions, text="Open Settings", command=self._open_settings_window).pack(side="left", padx=8)
+        ttk.Button(actions, text="Open Help", command=lambda: self._show_help_window("Workflow Help", self._workflow_help_text())).pack(side="left")
 
     def _build_profile_workflow_step(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(0, weight=1)
@@ -486,7 +790,7 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
 
     def _show_workflow_step(self, step_key: str) -> None:
         if step_key not in self.workflow_frames:
-            step_key = "workspace"
+            step_key = "welcome"
         self.current_workflow_step_key = step_key
         self.workflow_frames[step_key].tkraise()
         step = self._workflow_step_definition(step_key)
@@ -518,10 +822,16 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         if bool(step.get("required", False)):
             messagebox.showwarning("Required step", "This step is required and cannot be skipped.")
             return
-        warning = (
-            f"Skip {step['label']}?\n\n"
-            "The app will continue, but document quality may be weaker because this step adds strategy, proof, or review discipline."
-        )
+        if self.current_workflow_step_key == "welcome":
+            warning = (
+                "Skip the welcome page?\n\n"
+                "You can always reopen it later from Help > Welcome."
+            )
+        else:
+            warning = (
+                f"Skip {step['label']}?\n\n"
+                "The app will continue, but document quality may be weaker because this step adds strategy, proof, or review discipline."
+            )
         if not messagebox.askyesno("Skip optional step", warning):
             return
         self.skipped_workflow_steps.add(self.current_workflow_step_key)
@@ -549,6 +859,8 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         if hasattr(self, "structured_evidence_text"):
             structured_evidence = self.structured_evidence_text.get("1.0", tk.END).strip()
 
+        if step_key == "welcome":
+            return "○"
         if step_key == "workspace":
             return "✓" if (self.application_company_var.get().strip() and self.application_role_var.get().strip()) or self.current_application_path else "⚠"
         if step_key == "profile":
@@ -569,8 +881,6 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
             return "✓" if self.last_quality_report_markdown.strip() or self.cv_quality_report_markdown.strip() or self.covering_letter_quality_report_markdown.strip() else "○"
         if step_key == "export":
             return "✓" if self.application_package_exported else ("⚠" if self.generated_cv_markdown.strip() and self.generated_covering_letter_markdown.strip() else "○")
-        if step_key == "settings":
-            return "✓"
         return "○"
 
     def _refresh_workflow_statuses(self) -> None:
@@ -862,7 +1172,7 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
 
     def _build_ai_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(1, weight=1)
-        parent.rowconfigure(12, weight=1)
+        parent.rowconfigure(15, weight=1)
 
         env_status = "Detected" if self.ai_service.has_environment_api_key() else "Not detected"
 
@@ -876,33 +1186,51 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         ttk.Label(parent, text="Generation mode").grid(row=2, column=0, sticky="w", pady=6)
         ttk.Combobox(parent, textvariable=self.ai_mode_var, values=GENERATION_MODES, state="readonly").grid(row=2, column=1, sticky="ew", pady=6)
 
-        ttk.Label(parent, text="Timeout seconds").grid(row=3, column=0, sticky="w", pady=6)
-        ttk.Entry(parent, textvariable=self.ai_timeout_var, width=12).grid(row=3, column=1, sticky="w", pady=6)
+        ttk.Label(parent, text="UI theme").grid(row=3, column=0, sticky="w", pady=6)
+        theme_combo = ttk.Combobox(parent, textvariable=self.ui_theme_var, values=UI_THEME_OPTIONS, state="readonly")
+        theme_combo.grid(row=3, column=1, sticky="ew", pady=6)
+        theme_combo.bind("<<ComboboxSelected>>", lambda event: self._set_ui_theme(self.ui_theme_var.get()))
+
+        ttk.Label(parent, text="Timeout seconds").grid(row=4, column=0, sticky="w", pady=6)
+        ttk.Entry(parent, textvariable=self.ai_timeout_var, width=12).grid(row=4, column=1, sticky="w", pady=6)
 
         separator_one = ttk.Separator(parent, orient="horizontal")
-        separator_one.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(10, 8))
+        separator_one.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(10, 8))
 
-        ttk.Label(parent, text="Ollama base URL").grid(row=5, column=0, sticky="w", pady=6)
-        ttk.Entry(parent, textvariable=self.ollama_base_url_var).grid(row=5, column=1, sticky="ew", pady=6)
+        ttk.Label(parent, text="Ollama base URL").grid(row=6, column=0, sticky="w", pady=6)
+        ttk.Entry(parent, textvariable=self.ollama_base_url_var).grid(row=6, column=1, sticky="ew", pady=6)
 
-        ttk.Label(parent, text="Ollama model").grid(row=6, column=0, sticky="w", pady=6)
-        ttk.Combobox(parent, textvariable=self.ollama_model_var, values=OLLAMA_MODEL_OPTIONS, state="normal").grid(row=6, column=1, sticky="ew", pady=6)
+        ttk.Label(parent, text="Ollama model").grid(row=7, column=0, sticky="w", pady=6)
+        ttk.Combobox(parent, textvariable=self.ollama_model_var, values=OLLAMA_MODEL_OPTIONS, state="normal").grid(row=7, column=1, sticky="ew", pady=6)
 
         separator_two = ttk.Separator(parent, orient="horizontal")
-        separator_two.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(10, 8))
+        separator_two.grid(row=8, column=0, columnspan=2, sticky="ew", pady=(10, 8))
 
-        ttk.Label(parent, text="OPENAI_API_KEY environment key").grid(row=8, column=0, sticky="w", pady=6)
-        ttk.Label(parent, text=env_status).grid(row=8, column=1, sticky="w", pady=6)
+        ttk.Label(parent, text="OPENAI_API_KEY environment key").grid(row=9, column=0, sticky="w", pady=6)
+        ttk.Label(parent, text=env_status).grid(row=9, column=1, sticky="w", pady=6)
 
-        ttk.Label(parent, text="OpenAI session API key").grid(row=9, column=0, sticky="w", pady=6)
+        ttk.Label(parent, text="OpenAI session API key").grid(row=10, column=0, sticky="w", pady=6)
         key_entry = ttk.Entry(parent, textvariable=self.ai_api_key_var, show="*")
-        key_entry.grid(row=9, column=1, sticky="ew", pady=6)
+        key_entry.grid(row=10, column=1, sticky="ew", pady=6)
 
-        ttk.Label(parent, text="OpenAI model").grid(row=10, column=0, sticky="nw", pady=6)
-        ttk.Combobox(parent, textvariable=self.ai_model_var, values=OPENAI_MODEL_OPTIONS, state="normal").grid(row=10, column=1, sticky="ew", pady=6)
+        ttk.Label(parent, text="OpenAI model").grid(row=11, column=0, sticky="nw", pady=6)
+        ttk.Combobox(parent, textvariable=self.ai_model_var, values=OPENAI_MODEL_OPTIONS, state="normal").grid(row=11, column=1, sticky="ew", pady=6)
+
+        separator_three = ttk.Separator(parent, orient="horizontal")
+        separator_three.grid(row=12, column=0, columnspan=2, sticky="ew", pady=(10, 8))
+
+        ttk.Label(parent, text="Default writing template").grid(row=13, column=0, sticky="w", pady=6)
+        ttk.Combobox(parent, textvariable=self.template_var, values=get_template_names(), state="readonly").grid(row=13, column=1, sticky="ew", pady=6)
+
+        ttk.Label(parent, text="Default PDF template / page size").grid(row=14, column=0, sticky="w", pady=6)
+        pdf_defaults = ttk.Frame(parent, style="Content.TFrame")
+        pdf_defaults.grid(row=14, column=1, sticky="ew", pady=6)
+        pdf_defaults.columnconfigure(0, weight=1)
+        ttk.Combobox(pdf_defaults, textvariable=self.pdf_template_var, values=get_pdf_template_names(), state="readonly").grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        ttk.Combobox(pdf_defaults, textvariable=self.pdf_page_size_var, values=["A4", "Letter"], state="readonly", width=10).grid(row=0, column=1, sticky="e")
 
         button_frame = ttk.Frame(parent)
-        button_frame.grid(row=11, column=0, columnspan=2, sticky="ew", pady=(8, 8))
+        button_frame.grid(row=15, column=0, columnspan=2, sticky="ew", pady=(8, 8))
         ttk.Button(button_frame, text="Test Selected AI Provider", command=self._test_ai_connection).pack(side="left")
         ttk.Button(button_frame, text="Preview Prompt", command=self._preview_ai_prompt).pack(side="left", padx=8)
         ttk.Button(button_frame, text="Save App Settings", command=lambda: self._save_app_settings(show_message=True)).pack(side="left")
@@ -912,11 +1240,17 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         ttk.Combobox(button_frame, textvariable=self.prompt_preview_type_var, values=["Covering Letter", "CV"], width=10, state="readonly").pack(side="left")
 
         self.ai_help_text = tk.Text(parent, height=6, wrap="word")
-        self.ai_help_text.grid(row=12, column=0, columnspan=2, sticky="nsew", pady=(8, 0))
+        self.ai_help_text.grid(row=16, column=0, columnspan=2, sticky="nsew", pady=(8, 0))
+        parent.rowconfigure(16, weight=1)
         self._refresh_ai_provider_help()
 
     def _refresh_ai_provider_help(self) -> None:
         if not hasattr(self, "ai_help_text"):
+            return
+        try:
+            if not self.ai_help_text.winfo_exists():
+                return
+        except tk.TclError:
             return
 
         selected_provider = self.ai_provider_var.get().strip() or "Ollama Local"
@@ -1236,6 +1570,7 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         timeout_seconds = max(30, min(timeout_seconds, 600))
 
         return AppSettings(
+            ui_theme=self.ui_theme_var.get().strip() or "Light",
             template_name=self.template_var.get().strip() or "ATS Friendly",
             pdf_template=self.pdf_template_var.get().strip() or "ATS Friendly",
             pdf_page_size=self.pdf_page_size_var.get().strip() or "A4",
@@ -1252,6 +1587,7 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
 
     def _apply_app_settings(self, settings: AppSettings) -> None:
         self.app_settings = settings
+        self.ui_theme_var.set(getattr(settings, "ui_theme", "Light") or "Light")
         self.template_var.set(settings.template_name)
         self.pdf_template_var.set(settings.pdf_template)
         self.pdf_page_size_var.set(settings.pdf_page_size)
@@ -1265,6 +1601,9 @@ class ResumeAIApp(ctk.CTk if ctk is not None else tk.Tk):
         self.ai_api_key_var.set("")
         self._refresh_ai_provider_help()
         self._update_template_description()
+        self._configure_visual_theme()
+        self._apply_visual_theme_to_children()
+        self._refresh_workflow_statuses()
 
     def _save_app_settings(self, show_message: bool = False) -> None:
         self.app_settings = self._collect_app_settings()

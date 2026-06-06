@@ -37,10 +37,15 @@
 - Replaced crowded tabs with a sidebar workflow and skip options
 - Removed redundant Next navigation from the sidebar workflow
 - Added modern GUI visual polish with cleaner spacing, typography, sidebar highlighting, and styled text areas
+- Added top menu bar with File, Workflow, Settings, and Help menus
+- Added Welcome workflow page with a future logo placeholder
+- Moved Settings out of the sidebar and into the top menu
+- Added UI theme selection with Light, Soft Blue, and Dark themes
 
 ## Next
 
-1. Add guided questions for unsupported job signals.
+1. Continue GUI cleanup with cleaner page layouts and better help content.
+2. Add guided questions for unsupported job signals.
 2. Feed job fit strategy into quality improvement history and document versioning.
 3. Add document version history inside each application workspace.
 4. Add template preview and editing.

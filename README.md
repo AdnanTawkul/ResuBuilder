@@ -302,3 +302,29 @@ Prompt preview now opens in a dedicated preview window instead of writing to the
 - Added CustomTkinter as an optional modern UI dependency while preserving the current Tkinter/ttk implementation.
 
 - Fixed the Export step action bar so buttons wrap into two rows and no longer get cropped at the default window width.
+
+## Step 22 top menu, welcome page, help, and UI themes
+
+This update starts the menu-driven GUI cleanup.
+
+Changes:
+
+- Added a top menu bar with **File**, **Workflow**, **Settings**, and **Help**.
+- Added a new **Welcome** workflow page with a future logo placeholder and quick-start explanation.
+- Removed **Settings** from the sidebar workflow and moved it into the top **Settings** menu.
+- Added a Settings window for AI provider, models, timeouts, templates, PDF defaults, and UI theme.
+- Added Help menu explanations for the workflow and menu options.
+- Added UI theme options: **Light**, **Soft Blue**, and **Dark**.
+- Saved the selected UI theme in `data/settings.json`.
+
+Use this branch for the update:
+
+```text
+feature/gui-top-menu-welcome
+```
+
+Recommended commit:
+
+```text
+Add top menu, welcome page, and UI theme settings
+```

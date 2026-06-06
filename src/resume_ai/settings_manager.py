@@ -13,6 +13,7 @@ SETTINGS_PATH = DATA_DIR / "settings.json"
 @dataclass
 class AppSettings:
     schema_version: int = 1
+    ui_theme: str = "Light"
     template_name: str = "ATS Friendly"
     pdf_template: str = "ATS Friendly"
     pdf_page_size: str = "A4"
@@ -41,6 +42,7 @@ class AppSettings:
 
         return cls(
             schema_version=int(data.get("schema_version", defaults.schema_version) or defaults.schema_version),
+            ui_theme=str(data.get("ui_theme", defaults.ui_theme) or defaults.ui_theme),
             template_name=str(data.get("template_name", defaults.template_name) or defaults.template_name),
             pdf_template=str(data.get("pdf_template", defaults.pdf_template) or defaults.pdf_template),
             pdf_page_size=str(data.get("pdf_page_size", defaults.pdf_page_size) or defaults.pdf_page_size),
