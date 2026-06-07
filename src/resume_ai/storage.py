@@ -1,21 +1,25 @@
+from __future__ import annotations
+
 import json
 from pathlib import Path
 from typing import Any
 
+from .app_paths import data_dir, exports_dir, profile_path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = PROJECT_ROOT / "data"
-EXPORT_DIR = PROJECT_ROOT / "exports"
-PROFILE_FILE = DATA_DIR / "candidate_profile.json"
+
+DATA_DIR = data_dir()
+EXPORT_DIR = exports_dir()
+PROFILE_FILE = profile_path()
 
 
 def ensure_directories() -> None:
-    DATA_DIR.mkdir(exist_ok=True)
-    EXPORT_DIR.mkdir(exist_ok=True)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def save_json(data: dict[str, Any], path: Path = PROFILE_FILE) -> None:
     ensure_directories()
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 

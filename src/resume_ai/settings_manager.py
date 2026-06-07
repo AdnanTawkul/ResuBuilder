@@ -5,9 +5,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .app_paths import data_dir, settings_path
 
-DATA_DIR = Path("data")
-SETTINGS_PATH = DATA_DIR / "settings.json"
+
+DATA_DIR = data_dir()
+SETTINGS_PATH = settings_path()
 
 
 @dataclass
