@@ -24,7 +24,7 @@ class AppSettings:
     openai_model: str = "gpt-4.1-mini"
     generation_mode: str = "Balanced"
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "qwen3:14b"
+    ollama_model: str = "qwen3:8b"
     timeout_seconds: int = 120
     last_workspace_dir: str = ""
     last_export_dir: str = ""
