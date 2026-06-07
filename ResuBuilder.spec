@@ -56,7 +56,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(icon_path) if icon_path.exists() else None,
+    icon="src/resume_ai/assets/resubuilder.ico",
 )
 coll = COLLECT(
     exe,
