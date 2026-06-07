@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "ui_theme": "Modern 3D Dark",
-  "template_name": "Professional",
+  "template_name": "ATS Friendly",
   "pdf_template": "ATS Friendly",
   "pdf_page_size": "A4",
   "use_ai": true,
@@ -10,7 +10,7 @@
   "generation_mode": "Balanced",
   "ollama_base_url": "http://localhost:11434",
   "ollama_model": "qwen3:14b",
-  "timeout_seconds": 180,
-  "last_workspace_dir": "G:\\Python\\ResuBuilder\\ResuBuilder\\data\\applications",
-  "last_export_dir": "G:\\Python\\ResuBuilder\\ResuBuilder\\exports\\sonova_group_deep_learning_engineer_2026-06-05"
+  "timeout_seconds": 120,
+  "last_workspace_dir": "",
+  "last_export_dir": ""
 }
