@@ -49,6 +49,7 @@ from .pdf_exporter import export_markdown_to_pdf
 from .pdf_templates import get_pdf_template_names
 from .quality_checker import analyze_document, format_quality_report
 from .settings_manager import AppSettings, load_app_settings, save_app_settings
+from .app_paths import applications_dir, data_dir, exports_dir, logs_dir, profile_path
 from .storage import load_json, save_json
 from .templates import get_template_names
 from .workspace_manager import (
@@ -63,6 +64,7 @@ from .qt_theme import DARK_BLUE_QSS, THEME_OPTIONS, theme_qss
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 ASSET_DIR = Path(__file__).resolve().parent / "assets"
 LOGO_PATH = ASSET_DIR / "resubuilder_logo.svg"
+PROFILE_PATH = profile_path()
 
 OLLAMA_MODEL_OPTIONS = [
     "qwen3:8b",
@@ -519,10 +521,9 @@ class ResuBuilderQtApp(QMainWindow):
         self.file_menu.addAction(self._menu_action("Save Application Workspace", self._save_workspace))
         self.file_menu.addAction(self._menu_action("Save Application Workspace As...", self._save_workspace_as))
         self.file_menu.addSeparator()
+        self.file_menu.addAction(self._menu_action("Load Profile...", self._load_profile))
         self.file_menu.addAction(self._menu_action("Save Profile", self._save_current_profile))
-        self.file_menu.addAction(self._menu_action("Load Saved Profile", self._load_saved_profile))
-        self.file_menu.addAction(self._menu_action("Import Profile JSON...", self._import_profile_json))
-        self.file_menu.addAction(self._menu_action("Export Profile JSON...", self._export_profile_json))
+        self.file_menu.addAction(self._menu_action("Save Profile As...", self._save_profile_as))
         self.file_menu.addSeparator()
         self.file_menu.addAction(self._menu_action("Export Application Package", self._export_application_package))
         self.file_menu.addAction(self._menu_action("Open Export Folder", self._open_export_dir))
@@ -577,8 +578,8 @@ class ResuBuilderQtApp(QMainWindow):
         self.settings_template_combo.setCurrentText(getattr(self.app_settings, "template_name", "ATS Friendly"))
         self.settings_pdf_template_combo.setCurrentText(getattr(self.app_settings, "pdf_template", "ATS Friendly"))
         self.settings_page_size_combo.setCurrentText(getattr(self.app_settings, "pdf_page_size", "A4"))
-        self.settings_workspace_dir_edit.setText(getattr(self.app_settings, "last_workspace_dir", "") or str(Path("data/applications")))
-        self.settings_export_dir_edit.setText(getattr(self.app_settings, "last_export_dir", "") or str(Path("exports")))
+        self.settings_workspace_dir_edit.setText(getattr(self.app_settings, "last_workspace_dir", "") or str(applications_dir()))
+        self.settings_export_dir_edit.setText(getattr(self.app_settings, "last_export_dir", "") or str(exports_dir()))
         self.settings_theme_combo.setCurrentText(self._normalized_theme(getattr(self.app_settings, "ui_theme", "Dark blue")))
 
     def _open_settings_window(self) -> None:
@@ -680,8 +681,8 @@ class ResuBuilderQtApp(QMainWindow):
         folder_grid = QGridLayout()
         folder_grid.setHorizontalSpacing(12)
         folder_grid.setVerticalSpacing(14)
-        workspace_dir_edit = QLineEdit(getattr(self.app_settings, "last_workspace_dir", "") or str(Path("data/applications")))
-        export_dir_edit = QLineEdit(getattr(self.app_settings, "last_export_dir", "") or str(Path("exports")))
+        workspace_dir_edit = QLineEdit(getattr(self.app_settings, "last_workspace_dir", "") or str(applications_dir()))
+        export_dir_edit = QLineEdit(getattr(self.app_settings, "last_export_dir", "") or str(exports_dir()))
         self._prepare_form_control(workspace_dir_edit, min_width=520)
         self._prepare_form_control(export_dir_edit, min_width=520)
         self._add_labeled_field(folder_grid, 0, 0, "Workspace folder", workspace_dir_edit)
@@ -1032,26 +1033,22 @@ class ResuBuilderQtApp(QMainWindow):
         validate_button.setObjectName("PrimaryButton")
         validate_button.clicked.connect(self._validate_profile_with_message)
 
+        load_profile_button = QPushButton("Load Profile...")
+        load_profile_button.clicked.connect(self._load_profile)
+
         save_profile_button = QPushButton("Save Profile")
         save_profile_button.clicked.connect(self._save_current_profile)
 
-        load_profile_button = QPushButton("Load Saved Profile")
-        load_profile_button.clicked.connect(self._load_saved_profile)
-
-        import_profile_button = QPushButton("Import Profile JSON")
-        import_profile_button.clicked.connect(self._import_profile_json)
-
-        export_profile_button = QPushButton("Export Profile JSON")
-        export_profile_button.clicked.connect(self._export_profile_json)
+        save_profile_as_button = QPushButton("Save Profile As...")
+        save_profile_as_button.clicked.connect(self._save_profile_as)
 
         continue_button = QPushButton("Continue to Evidence")
         continue_button.clicked.connect(lambda: self.show_page("Evidence"))
 
         action_row.addWidget(validate_button)
-        action_row.addWidget(save_profile_button)
         action_row.addWidget(load_profile_button)
-        action_row.addWidget(import_profile_button)
-        action_row.addWidget(export_profile_button)
+        action_row.addWidget(save_profile_button)
+        action_row.addWidget(save_profile_as_button)
         action_row.addWidget(continue_button)
         action_row.addStretch(1)
         content_layout.addLayout(action_row)
@@ -1508,7 +1505,7 @@ class ResuBuilderQtApp(QMainWindow):
         ):
             self._prepare_form_control(export_widget, min_width=420)
 
-        default_export_dir = getattr(self.app_settings, "last_export_dir", "") or str(Path("exports"))
+        default_export_dir = getattr(self.app_settings, "last_export_dir", "") or str(exports_dir())
         self.export_dir_edit = QLineEdit(default_export_dir)
         self._prepare_form_control(self.export_dir_edit, min_width=420)
         browse_button = QPushButton("Browse")
@@ -1703,8 +1700,8 @@ class ResuBuilderQtApp(QMainWindow):
         folders_grid.setVerticalSpacing(14)
         folders_grid.setColumnStretch(0, 1)
 
-        self.settings_workspace_dir_edit = QLineEdit(getattr(self.app_settings, "last_workspace_dir", "") or str(Path("data/applications")))
-        self.settings_export_dir_edit = QLineEdit(getattr(self.app_settings, "last_export_dir", "") or str(Path("exports")))
+        self.settings_workspace_dir_edit = QLineEdit(getattr(self.app_settings, "last_workspace_dir", "") or str(applications_dir()))
+        self.settings_export_dir_edit = QLineEdit(getattr(self.app_settings, "last_export_dir", "") or str(exports_dir()))
         self._prepare_form_control(self.settings_workspace_dir_edit, min_width=520)
         self._prepare_form_control(self.settings_export_dir_edit, min_width=520)
 
@@ -1867,7 +1864,7 @@ class ResuBuilderQtApp(QMainWindow):
         template_name = self.template_combo.currentText() if hasattr(self, "template_combo") else getattr(self.app_settings, "template_name", "ATS Friendly")
         pdf_template = self.export_pdf_template_combo.currentText() if hasattr(self, "export_pdf_template_combo") else getattr(self.app_settings, "pdf_template", "ATS Friendly")
         pdf_page_size = self.export_page_size_combo.currentText() if hasattr(self, "export_page_size_combo") else getattr(self.app_settings, "pdf_page_size", "A4")
-        export_dir = self.export_dir_edit.text().strip() if hasattr(self, "export_dir_edit") else getattr(self.app_settings, "last_export_dir", "exports")
+        export_dir = self.export_dir_edit.text().strip() if hasattr(self, "export_dir_edit") else getattr(self.app_settings, "last_export_dir", str(exports_dir()))
         return {
             "source": "ResuBuilder",
             "metadata": metadata,
@@ -1917,10 +1914,34 @@ class ResuBuilderQtApp(QMainWindow):
             f"AI quality review: {'yes' if self.ai_quality_review.strip() else 'no'}"
         )
 
+    def _workspace_open_dir(self) -> Path:
+        configured = getattr(self.app_settings, "last_workspace_dir", "") or ""
+        if configured:
+            path = Path(configured)
+            try:
+                path.mkdir(parents=True, exist_ok=True)
+                return path
+            except OSError:
+                pass
+        return ensure_applications_dir()
+
     def _suggest_workspace_path(self) -> Path:
         metadata = self._workspace_metadata()
         filename = suggested_application_filename(metadata.get("target_company", ""), metadata.get("target_role", ""))
-        return ensure_applications_dir() / filename
+        return self._workspace_open_dir() / filename
+
+    def _remember_workspace_dir(self, path: Path) -> None:
+        try:
+            folder = path.parent.resolve()
+        except OSError:
+            folder = path.parent
+        self.app_settings.last_workspace_dir = str(folder)
+        if hasattr(self, "settings_workspace_dir_edit"):
+            self.settings_workspace_dir_edit.setText(str(folder))
+        try:
+            save_app_settings(self.app_settings)
+        except Exception:  # noqa: BLE001
+            self._write_qt_log("Workspace directory setting save failed:\n" + traceback.format_exc())
 
     def _new_workspace(self) -> None:
         answer = QMessageBox.question(
@@ -1994,6 +2015,7 @@ class ResuBuilderQtApp(QMainWindow):
             QMessageBox.critical(self, "Workspace save failed", str(exc))
             return
         self.current_workspace_path = saved_path
+        self._remember_workspace_dir(saved_path)
         self.workspace_path_edit.setText(str(saved_path))
         self._sync_export_metadata_from_workspace(force_empty_only=True)
         self._update_workspace_status("Workspace saved successfully.")
@@ -2003,7 +2025,7 @@ class ResuBuilderQtApp(QMainWindow):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Load application workspace",
-            str(ensure_applications_dir()),
+            str(self._workspace_open_dir()),
             "Application workspace (*.json);;JSON files (*.json);;All files (*.*)",
         )
         if not file_path:
@@ -2016,6 +2038,7 @@ class ResuBuilderQtApp(QMainWindow):
             QMessageBox.critical(self, "Workspace load failed", str(exc))
             return
         self.current_workspace_path = Path(file_path)
+        self._remember_workspace_dir(self.current_workspace_path)
         self.workspace_path_edit.setText(str(self.current_workspace_path))
         self._update_workspace_status("Workspace loaded successfully.")
         self.show_page("Workspace")
@@ -2225,16 +2248,16 @@ class ResuBuilderQtApp(QMainWindow):
         self._set_evidence_form(
             {
                 "type": "Project",
-                "title": "Face-Aware FlowMag for Micro-Expression Spotting",
-                "context": "Research-engineering project adapting self-supervised motion magnification to subtle facial micro-expression spotting on CASME II.",
-                "tools": "Python, PyTorch, optical flow, CASME II, facial landmark masks, LBP-TOP, SVM",
-                "methods": "Fine-tuned a pretrained FlowMag-style motion magnification model, added face-aware regularization with landmark-based masks, compared baseline inference, test-time adaptation, and face-aware training variants.",
-                "outcome": "Produced a more spatially meaningful facial motion amplification pipeline and supported downstream micro-expression evaluation through motion analysis and feature-based classification.",
-                "metrics": "Research repository, loss formulation, baseline comparison, motion error analysis, downstream LBP-TOP + SVM evaluation workflow.",
-                "signals": "computer vision, deep learning, optical flow, model adaptation, transfer learning, algorithms, validation, neural engineering",
+                "title": "Data Automation and Reporting Tool",
+                "context": "Internal project created to reduce repetitive manual reporting work and make recurring data checks easier to review.",
+                "tools": "Python, pandas, CSV/Excel files, Git, basic data validation",
+                "methods": "Built scripts to load structured data, clean inconsistent fields, validate required values, generate summary outputs, and document the workflow so it could be repeated reliably.",
+                "outcome": "Improved the consistency of recurring reports and gave the team a clearer way to review data quality before using the results in decisions.",
+                "metrics": "Example evidence only. Replace with truthful proof such as time saved, error reduction, number of files processed, user feedback, repository link, or validation notes.",
+                "signals": "Python, automation, data processing, quality, documentation, problem solving, Git",
             }
         )
-        QMessageBox.information(self, "Example loaded", "Example evidence loaded into the form. Review it, edit it, then click Add Evidence.")
+        QMessageBox.information(self, "Example loaded", "Generic example evidence loaded into the form. Replace it with truthful candidate evidence before adding it.")
 
     def _build_profile(self) -> CandidateProfile:
         return CandidateProfile(
@@ -2321,6 +2344,7 @@ class ResuBuilderQtApp(QMainWindow):
                 self.evidence_list.setCurrentRow(0)
 
     def _save_current_profile(self) -> None:
+        """Save the active profile to the default project profile file."""
         ok, message = self._validate_profile()
         if not ok:
             QMessageBox.warning(self, "Cannot save profile", message)
@@ -2331,27 +2355,49 @@ class ResuBuilderQtApp(QMainWindow):
             self._write_qt_log("Profile save failed:\n" + traceback.format_exc())
             QMessageBox.critical(self, "Profile save failed", str(exc))
             return
-        QMessageBox.information(self, "Profile saved", "Profile saved to data/candidate_profile.json.")
+        QMessageBox.information(self, "Profile saved", f"Profile saved to:\n{PROFILE_PATH}")
 
-    def _load_saved_profile(self) -> None:
+    def _save_profile_as(self) -> None:
+        """Save the active profile to a user-selected JSON file."""
+        ok, message = self._validate_profile()
+        if not ok:
+            QMessageBox.warning(self, "Cannot save profile", message)
+            return
+        PROFILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save profile as",
+            str(PROFILE_PATH),
+            "Profile JSON (*.json);;JSON files (*.json)",
+        )
+        if not file_path:
+            return
         try:
-            data = load_json()
+            path = Path(file_path)
+            if path.suffix.lower() != ".json":
+                path = path.with_suffix(".json")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(self._profile_to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
         except Exception as exc:  # noqa: BLE001
-            self._write_qt_log("Profile load failed:\n" + traceback.format_exc())
-            QMessageBox.critical(self, "Profile load failed", str(exc))
+            self._write_qt_log("Profile save-as failed:\n" + traceback.format_exc())
+            QMessageBox.critical(self, "Profile save failed", str(exc))
             return
-        if not data:
-            QMessageBox.information(self, "No saved profile", "No saved profile was found in data/candidate_profile.json.")
-            return
-        self._apply_profile_data(data)
-        QMessageBox.information(self, "Profile loaded", "Saved profile loaded into the Qt profile page.")
+        QMessageBox.information(self, "Profile saved", f"Profile saved to:\n{path}")
 
-    def _import_profile_json(self) -> None:
+    def _load_profile(self) -> None:
+        """Load a profile JSON from the profile data folder.
+
+        This replaces the old separate "Load Saved Profile" and "Import Profile JSON"
+        actions. One loader handles both the default saved profile and any user-selected
+        profile JSON file.
+        """
+        PROFILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        start_path = PROFILE_PATH if PROFILE_PATH.exists() else PROFILE_PATH.parent
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "Import profile JSON",
-            str(Path("data")),
-            "JSON files (*.json);;All files (*.*)",
+            "Load profile",
+            str(start_path),
+            "Profile JSON (*.json);;JSON files (*.json);;All files (*.*)",
         )
         if not file_path:
             return
@@ -2360,34 +2406,21 @@ class ResuBuilderQtApp(QMainWindow):
             if not isinstance(data, dict):
                 raise ValueError("Profile JSON must contain a JSON object.")
         except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Profile import failed", str(exc))
+            self._write_qt_log("Profile load failed:\n" + traceback.format_exc())
+            QMessageBox.critical(self, "Profile load failed", str(exc))
             return
         self._apply_profile_data(data)
-        QMessageBox.information(self, "Profile imported", "Profile data imported. Validate and save it before generating.")
+        QMessageBox.information(self, "Profile loaded", f"Profile loaded from:\n{file_path}")
+
+    # Backward-compatible aliases for older menu/action references.
+    def _load_saved_profile(self) -> None:
+        self._load_profile()
+
+    def _import_profile_json(self) -> None:
+        self._load_profile()
 
     def _export_profile_json(self) -> None:
-        ok, message = self._validate_profile()
-        if not ok:
-            QMessageBox.warning(self, "Cannot export profile", message)
-            return
-        default_path = Path("data") / "candidate_profile_export.json"
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export profile JSON",
-            str(default_path),
-            "JSON files (*.json)",
-        )
-        if not file_path:
-            return
-        try:
-            path = Path(file_path)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(self._profile_to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
-        except Exception as exc:  # noqa: BLE001
-            self._write_qt_log("Profile export failed:\n" + traceback.format_exc())
-            QMessageBox.critical(self, "Profile export failed", str(exc))
-            return
-        QMessageBox.information(self, "Profile exported", f"Profile exported to:\n{path}")
+        self._save_profile_as()
 
     def _settings_to_ai_settings(self) -> AISettings:
         return AISettings(
@@ -2563,7 +2596,7 @@ class ResuBuilderQtApp(QMainWindow):
 
     def _write_qt_log(self, message: str) -> None:
         try:
-            log_dir = Path("data/logs")
+            log_dir = logs_dir()
             log_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             with (log_dir / "qt_gui.log").open("a", encoding="utf-8") as handle:
@@ -2836,8 +2869,8 @@ class ResuBuilderQtApp(QMainWindow):
         return document_type, self.generated_covering_letter
 
     def _browse_export_dir(self) -> None:
-        current = self.export_dir_edit.text().strip() if hasattr(self, "export_dir_edit") else str(Path("exports"))
-        selected = QFileDialog.getExistingDirectory(self, "Select export folder", current or str(Path("exports")))
+        current = self.export_dir_edit.text().strip() if hasattr(self, "export_dir_edit") else str(exports_dir())
+        selected = QFileDialog.getExistingDirectory(self, "Select export folder", current or str(exports_dir()))
         if selected:
             self.export_dir_edit.setText(selected)
             self.app_settings.last_export_dir = selected
@@ -2847,8 +2880,8 @@ class ResuBuilderQtApp(QMainWindow):
                 self._write_qt_log("Could not persist last export directory:\n" + traceback.format_exc())
 
     def _export_root(self) -> Path:
-        value = self.export_dir_edit.text().strip() if hasattr(self, "export_dir_edit") else "exports"
-        return Path(value or "exports")
+        value = self.export_dir_edit.text().strip() if hasattr(self, "export_dir_edit") else str(exports_dir())
+        return Path(value or str(exports_dir()))
 
     def _clean_filename_part(self, value: str, fallback: str) -> str:
         cleaned = re.sub(r"[^A-Za-z0-9]+", "_", (value or "").strip()).strip("_")
@@ -3012,14 +3045,14 @@ class ResuBuilderQtApp(QMainWindow):
             self.settings_status_label.setText("Theme preview applied. Click Save Settings to remember it after restart.")
 
     def _browse_settings_workspace_dir(self) -> None:
-        current = self.settings_workspace_dir_edit.text().strip() if hasattr(self, "settings_workspace_dir_edit") else str(Path("data/applications"))
-        selected = QFileDialog.getExistingDirectory(self, "Select workspace folder", current or str(Path("data/applications")))
+        current = self.settings_workspace_dir_edit.text().strip() if hasattr(self, "settings_workspace_dir_edit") else str(applications_dir())
+        selected = QFileDialog.getExistingDirectory(self, "Select workspace folder", current or str(applications_dir()))
         if selected and hasattr(self, "settings_workspace_dir_edit"):
             self.settings_workspace_dir_edit.setText(selected)
 
     def _browse_settings_export_dir(self) -> None:
-        current = self.settings_export_dir_edit.text().strip() if hasattr(self, "settings_export_dir_edit") else str(Path("exports"))
-        selected = QFileDialog.getExistingDirectory(self, "Select export folder", current or str(Path("exports")))
+        current = self.settings_export_dir_edit.text().strip() if hasattr(self, "settings_export_dir_edit") else str(exports_dir())
+        selected = QFileDialog.getExistingDirectory(self, "Select export folder", current or str(exports_dir()))
         if selected and hasattr(self, "settings_export_dir_edit"):
             self.settings_export_dir_edit.setText(selected)
 
@@ -3081,8 +3114,8 @@ class ResuBuilderQtApp(QMainWindow):
             self.settings_template_combo.setCurrentText(getattr(self.app_settings, "template_name", "ATS Friendly"))
             self.settings_pdf_template_combo.setCurrentText(getattr(self.app_settings, "pdf_template", "ATS Friendly"))
             self.settings_page_size_combo.setCurrentText(getattr(self.app_settings, "pdf_page_size", "A4"))
-            self.settings_workspace_dir_edit.setText(getattr(self.app_settings, "last_workspace_dir", "") or str(Path("data/applications")))
-            self.settings_export_dir_edit.setText(getattr(self.app_settings, "last_export_dir", "") or str(Path("exports")))
+            self.settings_workspace_dir_edit.setText(getattr(self.app_settings, "last_workspace_dir", "") or str(applications_dir()))
+            self.settings_export_dir_edit.setText(getattr(self.app_settings, "last_export_dir", "") or str(exports_dir()))
             self.settings_theme_combo.setCurrentText(self._normalized_theme(getattr(self.app_settings, "ui_theme", "Dark blue")))
         self._apply_settings_to_existing_controls()
         try:

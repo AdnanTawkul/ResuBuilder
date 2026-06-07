@@ -1,0 +1,29 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>ResuBuilder negative-space R logo</title>
+  <desc>A modern rounded-square app logo using a #F66376 to #963DD9 gradient with the letter R cut out as transparent negative space.</desc>
+  <defs>
+    <linearGradient id="brandGradient" x1="118" y1="116" x2="906" y2="908" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F66376"/>
+      <stop offset="1" stop-color="#963DD9"/>
+    </linearGradient>
+    <linearGradient id="softHighlight" x1="250" y1="130" x2="760" y2="900" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.24"/>
+      <stop offset="0.48" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.15"/>
+    </linearGradient>
+    <filter id="softShadow" x="45" y="55" width="934" height="934" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="28" stdDeviation="34" flood-color="#4B166A" flood-opacity="0.25"/>
+    </filter>
+    <clipPath id="negativeRClip" clipPathUnits="userSpaceOnUse">
+      <path d="M246,92 H778 A154,154 0 0 1 932,246 V778 A154,154 0 0 1 778,932 H246 A154,154 0 0 1 92,778 V246 A154,154 0 0 1 246,92 Z M451.270,486.940 Q504.333,486.940 527.355,467.288 Q550.377,447.494 550.377,402.293 Q550.377,357.513 527.355,338.281 Q504.333,318.909 451.270,318.909 L380.239,318.909 L380.239,486.940 L451.270,486.940 Z M380.239,603.594 L380.239,851.500 L211.366,851.500 L211.366,196.500 L469.239,196.500 Q598.666,196.500 658.888,240.017 Q719.250,283.393 719.250,377.306 Q719.250,442.160 687.806,483.852 Q656.502,525.544 593.332,545.337 Q628.005,553.198 655.379,581.134 Q682.893,608.928 710.968,665.500 L802.634,851.500 L622.811,851.500 L542.937,688.803 Q518.792,639.671 493.945,621.703 Q469.239,603.594 427.968,603.594 L380.239,603.594 Z" fill-rule="evenodd" clip-rule="evenodd"/>
+    </clipPath>
+  </defs>
+
+  <g filter="url(#softShadow)">
+    <path d="M246,92 H778 A154,154 0 0 1 932,246 V778 A154,154 0 0 1 778,932 H246 A154,154 0 0 1 92,778 V246 A154,154 0 0 1 246,92 Z M451.270,486.940 Q504.333,486.940 527.355,467.288 Q550.377,447.494 550.377,402.293 Q550.377,357.513 527.355,338.281 Q504.333,318.909 451.270,318.909 L380.239,318.909 L380.239,486.940 L451.270,486.940 Z M380.239,603.594 L380.239,851.500 L211.366,851.500 L211.366,196.500 L469.239,196.500 Q598.666,196.500 658.888,240.017 Q719.250,283.393 719.250,377.306 Q719.250,442.160 687.806,483.852 Q656.502,525.544 593.332,545.337 Q628.005,553.198 655.379,581.134 Q682.893,608.928 710.968,665.500 L802.634,851.500 L622.811,851.500 L542.937,688.803 Q518.792,639.671 493.945,621.703 Q469.239,603.594 427.968,603.594 L380.239,603.594 Z" fill="url(#brandGradient)" fill-rule="evenodd" clip-rule="evenodd"/>
+    <g clip-path="url(#negativeRClip)">
+      <rect x="92" y="92" width="840" height="840" rx="154" fill="url(#softHighlight)"/>
+      <path d="M97 92H932V932H676C523 709 384 450 302 92H97Z" fill="#FFFFFF" fill-opacity="0.09"/>
+    </g>
+  </g>
+</svg>

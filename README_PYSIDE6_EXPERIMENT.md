@@ -30,3 +30,9 @@ python app_legacy.py
 ## Notes
 
 The PySide6 interface is the primary UI. The legacy GUI is retained temporarily as a fallback while packaging and release testing continue.
+
+## Step 26C cleanup
+
+- Load Profile now opens a file picker in the profile data folder instead of silently loading a fixed file.
+- Load Workspace now opens from the saved workspace folder preference.
+- The default Evidence Builder example is now generic instead of project-specific.

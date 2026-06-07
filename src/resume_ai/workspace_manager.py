@@ -6,7 +6,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-APPLICATIONS_DIR = Path("data") / "applications"
+from .app_paths import applications_dir
+
+
+APPLICATIONS_DIR = applications_dir()
 WORKSPACE_SCHEMA_VERSION = 1
 
 

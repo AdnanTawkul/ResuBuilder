@@ -82,3 +82,21 @@ dist/
 - Workspace save/load works
 
 Do not publish a release until this checklist passes.
+
+## Persistent data location during local builds
+
+When running the packaged app from a development build such as:
+
+```text
+<project>/dist/ResuBuilder/ResuBuilder.exe
+```
+
+ResuBuilder stores user data in the project-level folder:
+
+```text
+<project>/data/
+```
+
+This prevents profiles, settings, workspaces, logs, and application files from being deleted when `build/` and `dist/` are cleaned before rebuilding the executable.
+
+If ResuBuilder is later distributed outside the repository and the project root cannot be detected, the app falls back to storing data beside the executable.
