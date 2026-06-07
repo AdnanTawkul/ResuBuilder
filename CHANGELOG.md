@@ -45,3 +45,14 @@ All notable changes to ResuBuilder will be documented in this file.
 - AI output must still be manually verified before submission.
 - OpenAI API usage requires separate OpenAI billing and quota.
 - Ollama must be installed and running for local AI workflows.
+
+## v0.1.1
+
+### Fixed
+- Improved first-run Ollama setup guidance.
+- Changed default local model to qwen3:8b for better compatibility.
+- Fixed packaged app data storage so user data is not saved inside dist/.
+- Simplified profile loading and saving actions.
+- Removed remaining experimental wording.
+- Improved welcome page spacing and card styling.
+- Softened light themes and aligned accent gradients.
