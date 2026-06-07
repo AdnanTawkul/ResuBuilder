@@ -410,15 +410,15 @@ QDialog#SettingsWindow QScrollArea, QDialog#SettingsWindow QScrollArea > QWidget
 #BrandSubtitle, #PageSubtitle, #CardText { color: #778095; }
 #PageTitle { color: #3f4656; font-size: 26px; font-weight: 900; }
 #HeroCard, #Card, #OutputCard, #MetricCard {
-    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #f8fbff, stop:1 #e7ecf4);
-    border-top: 1px solid rgba(255,255,255,0.95);
-    border-left: 1px solid rgba(255,255,255,0.95);
+    background-color: #f4f7fc;
+    border-top: 1px solid rgba(255,255,255,0.92);
+    border-left: 1px solid rgba(255,255,255,0.92);
     border-right: 1px solid rgba(184, 194, 210, 0.55);
     border-bottom: 1px solid rgba(184, 194, 210, 0.55);
     border-radius: 24px;
 }
 #HeroCard {
-    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #fbfdff, stop:0.55 #eef3fb, stop:1 #e3e9f4);
+    background-color: #f4f7fc;
 }
 #CardTitle { color: #3f4656; font-size: 16px; font-weight: 900; }
 #MetricNumber { color: #3f4656; font-size: 36px; font-weight: 900; }
@@ -566,14 +566,14 @@ QDialog#SettingsWindow QScrollArea, QDialog#SettingsWindow QScrollArea > QWidget
 #BrandSubtitle, #PageSubtitle, #CardText { color: #a7a7ad; }
 #PageTitle { color: #ffffff; font-size: 26px; font-weight: 900; }
 #HeroCard, #Card, #OutputCard, #MetricCard {
-    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #303030, stop:1 #222222);
-    border-top: 1px solid rgba(255,255,255,0.08);
-    border-left: 1px solid rgba(255,255,255,0.07);
+    background-color: #2b2b2b;
+    border-top: 1px solid rgba(255,255,255,0.07);
+    border-left: 1px solid rgba(255,255,255,0.06);
     border-right: 1px solid rgba(0,0,0,0.60);
     border-bottom: 1px solid rgba(0,0,0,0.60);
     border-radius: 24px;
 }
-#HeroCard { background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #343434, stop:1 #232323); }
+#HeroCard { background-color: #2b2b2b; }
 #CardTitle { color: #ffffff; font-size: 16px; font-weight: 900; }
 #MetricNumber { color: #ffffff; font-size: 36px; font-weight: 900; }
 QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox {

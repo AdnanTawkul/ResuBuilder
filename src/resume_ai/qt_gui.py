@@ -347,15 +347,17 @@ class Card(QFrame):
             self.layout.addWidget(subtitle_label)
 
     def _add_outer_shadow(self) -> None:
-        """Add a soft outside shadow so cards feel slightly raised.
+        """Add a directional shadow on the lower-right side of cards.
 
-        Qt stylesheets cannot render real box shadows. QGraphicsDropShadowEffect gives
-        the modern 3D themes a floating card effect without touching backend logic.
+        The previous 3D shadow was centered enough to create a halo on the
+        top and left edges. That made the cards look heavy. A positive X/Y
+        offset keeps the visible depth mostly on the right and bottom, which
+        gives the cleaner floating effect requested for the release UI.
         """
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(30)
-        shadow.setOffset(0, 10)
-        shadow.setColor(QColor(0, 0, 0, 85))
+        shadow.setBlurRadius(22)
+        shadow.setOffset(12, 14)
+        shadow.setColor(QColor(0, 0, 0, 92))
         self.setGraphicsEffect(shadow)
 
 
@@ -443,11 +445,11 @@ class ResuBuilderQtApp(QMainWindow):
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
     def _add_frame_shadow(self, frame: QFrame) -> None:
-        """Apply the same soft floating shadow to non-Card frames."""
+        """Apply a lower-right directional shadow to non-Card frames."""
         shadow = QGraphicsDropShadowEffect(frame)
-        shadow.setBlurRadius(28)
-        shadow.setOffset(0, 9)
-        shadow.setColor(QColor(0, 0, 0, 78))
+        shadow.setBlurRadius(22)
+        shadow.setOffset(12, 14)
+        shadow.setColor(QColor(0, 0, 0, 88))
         frame.setGraphicsEffect(shadow)
 
     def _logo_pixmap(self, size: int) -> QPixmap | None:
@@ -885,23 +887,36 @@ class ResuBuilderQtApp(QMainWindow):
         hero_layout.setContentsMargins(28, 28, 28, 28)
         hero_layout.setSpacing(18)
 
+        hero_header = QHBoxLayout()
+        hero_header.setSpacing(22)
+        hero_header.setAlignment(Qt.AlignmentFlag.AlignTop)
+
         logo = self._logo_label(78)
+        logo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+        hero_copy = QVBoxLayout()
+        hero_copy.setSpacing(10)
         hero_title = QLabel("Build stronger applications without losing truth control.")
         hero_title.setObjectName("PageTitle")
+        hero_title.setWordWrap(True)
         hero_text = QLabel(
             "ResuBuilder helps you structure your profile, match it to a role, generate tailored documents, review quality, and export a complete application package."
         )
         hero_text.setObjectName("PageSubtitle")
         hero_text.setWordWrap(True)
+        hero_copy.addWidget(hero_title)
+        hero_copy.addWidget(hero_text)
+        hero_copy.addStretch(1)
+
+        hero_header.addWidget(logo, 0, Qt.AlignmentFlag.AlignTop)
+        hero_header.addLayout(hero_copy, 1)
 
         start_button = QPushButton("Start with Profile")
         start_button.setObjectName("PrimaryButton")
         start_button.setCursor(Qt.CursorShape.PointingHandCursor)
         start_button.clicked.connect(lambda: self.show_page("Profile"))
 
-        hero_layout.addWidget(logo)
-        hero_layout.addWidget(hero_title)
-        hero_layout.addWidget(hero_text)
+        hero_layout.addLayout(hero_header)
         hero_layout.addWidget(start_button, alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(hero)
 
