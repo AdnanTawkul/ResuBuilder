@@ -1,6 +1,6 @@
-# Resume AI 2
+# ResuBuilder
 
-Resume AI 2 is a local desktop application for tailoring CVs and covering letters to a specific job description.
+ResuBuilder is a local desktop application for tailoring CVs and covering letters to a specific job description.
 
 ## Current features
 
@@ -11,6 +11,7 @@ Resume AI 2 is a local desktop application for tailoring CVs and covering letter
 - AI-powered Job Fit Analyzer using Ollama before generation
 - App settings persistence for AI, template, PDF, and folder defaults
 - Sidebar workflow GUI with step status, skip options, and simplified navigation
+- Modern visual theme with cleaner spacing, updated typography, highlighted workflow steps, styled text areas, and card-style welcome/profile sections
 - Existing CV and covering letter input
 - Existing PDF CV/covering-letter import
 - PDF/text job description import
@@ -39,8 +40,17 @@ Resume AI 2 is a local desktop application for tailoring CVs and covering letter
 - One-click application package export
 - Separate stored generated CV and covering letter outputs
 - Package export with final PDFs, Markdown sources, quality report, and summary JSON
+- Profile validation for email format and numeric-only telephone input
 
 ## Run the app
+
+Install or update dependencies first:
+
+```bash
+pip install -r requirements.txt
+```
+
+Then run:
 
 ```bash
 python app.py
@@ -166,6 +176,22 @@ Each step shows a status marker:
 
 Required steps cannot be skipped. Optional steps can be skipped, but the app warns when skipping may reduce output quality. The top navigation uses **Back**, **Skip & Continue**, and **Complete & Continue** so there is no redundant generic Next action. The goal is workflow clarity: the user should always know what to do next.
 
+## Modern GUI update
+
+The app now has a cleaner modern visual shell while keeping the existing sidebar workflow and app logic stable. The update improves:
+
+```text
+- Sidebar highlighting for the current step
+- Softer background and card-like surfaces
+- Cleaner button and input styling
+- Larger default window size
+- More readable text areas
+- Consistent Segoe UI typography
+- Better spacing around the workflow content
+```
+
+This is an incremental modernization, not a risky full rewrite. The app imports CustomTkinter when available and still falls back safely if the dependency is missing.
+
 ## App settings persistence
 
 The app now saves non-secret preferences locally under:
@@ -245,13 +271,13 @@ Use GitHub Desktop. Keep each major feature on its own branch until tested.
 Recommended branch:
 
 ```text
-feature/sidebar-workflow-gui
+feature/gui-visual-polish
 ```
 
 Recommended commit for this update:
 
 ```text
-Replace tabs with sidebar workflow
+Improve GUI visual layout and usability
 ```
 
 
@@ -265,3 +291,41 @@ Prompt preview now opens in a dedicated preview window instead of writing to the
 - Renamed **Skip This Step** to **Skip & Continue**.
 - Renamed **Mark Step Complete** to **Complete & Continue**.
 - Completing a step now moves directly to the next step.
+
+
+## Step 21 modern GUI polish
+
+- Added a modern visual theme layer.
+- Increased default app size for a less cramped workflow.
+- Highlighted the active sidebar step.
+- Styled complete and warning workflow states.
+- Improved text area readability.
+- Added CustomTkinter as an optional modern UI dependency while preserving the current Tkinter/ttk implementation.
+
+- Fixed the Export step action bar so buttons wrap into two rows and no longer get cropped at the default window width.
+
+## Step 22 top menu, welcome page, help, and UI themes
+
+This update starts the menu-driven GUI cleanup.
+
+Changes:
+
+- Added a top menu bar with **File**, **Workflow**, **Settings**, and **Help**.
+- Added a new **Welcome** workflow page with a future logo placeholder and quick-start explanation.
+- Removed **Settings** from the sidebar workflow and moved it into the top **Settings** menu.
+- Added a Settings window for AI provider, models, timeouts, templates, PDF defaults, and UI theme.
+- Added Help menu explanations for the workflow and menu options.
+- Added UI theme options: **Light**, **Dark**, and **Dark blue**.
+- Saved the selected UI theme in `data/settings.json`.
+
+Use this branch for the update:
+
+```text
+feature/gui-top-menu-welcome
+```
+
+Recommended commit:
+
+```text
+Add top menu, welcome page, and UI theme settings
+```

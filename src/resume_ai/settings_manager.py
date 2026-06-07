@@ -13,6 +13,7 @@ SETTINGS_PATH = DATA_DIR / "settings.json"
 @dataclass
 class AppSettings:
     schema_version: int = 1
+    ui_theme: str = "Dark blue"
     template_name: str = "ATS Friendly"
     pdf_template: str = "ATS Friendly"
     pdf_page_size: str = "A4"
@@ -39,15 +40,34 @@ class AppSettings:
             timeout = defaults.timeout_seconds
         timeout = max(30, min(timeout, 600))
 
+        theme = str(data.get("ui_theme", defaults.ui_theme) or defaults.ui_theme)
+        if theme == "Soft Blue":
+            theme = "Dark blue"
+        if theme not in {"Light", "Dark", "Dark blue", "Modern 3D Light", "Modern 3D Dark"}:
+            theme = defaults.ui_theme
+
+        provider = str(data.get("ai_provider", defaults.ai_provider) or defaults.ai_provider)
+        if provider not in {"Ollama Local", "OpenAI"}:
+            provider = defaults.ai_provider
+
+        mode = str(data.get("generation_mode", defaults.generation_mode) or defaults.generation_mode)
+        if mode not in {"Conservative", "Balanced", "Aggressive"}:
+            mode = defaults.generation_mode
+
+        page_size = str(data.get("pdf_page_size", defaults.pdf_page_size) or defaults.pdf_page_size)
+        if page_size not in {"A4", "Letter"}:
+            page_size = defaults.pdf_page_size
+
         return cls(
             schema_version=int(data.get("schema_version", defaults.schema_version) or defaults.schema_version),
+            ui_theme=theme,
             template_name=str(data.get("template_name", defaults.template_name) or defaults.template_name),
             pdf_template=str(data.get("pdf_template", defaults.pdf_template) or defaults.pdf_template),
-            pdf_page_size=str(data.get("pdf_page_size", defaults.pdf_page_size) or defaults.pdf_page_size),
+            pdf_page_size=page_size,
             use_ai=bool(data.get("use_ai", defaults.use_ai)),
-            ai_provider=str(data.get("ai_provider", defaults.ai_provider) or defaults.ai_provider),
+            ai_provider=provider,
             openai_model=str(data.get("openai_model", defaults.openai_model) or defaults.openai_model),
-            generation_mode=str(data.get("generation_mode", defaults.generation_mode) or defaults.generation_mode),
+            generation_mode=mode,
             ollama_base_url=str(data.get("ollama_base_url", defaults.ollama_base_url) or defaults.ollama_base_url),
             ollama_model=str(data.get("ollama_model", defaults.ollama_model) or defaults.ollama_model),
             timeout_seconds=timeout,

@@ -36,10 +36,16 @@
 - Added app settings persistence for AI, templates, PDF, and folders
 - Replaced crowded tabs with a sidebar workflow and skip options
 - Removed redundant Next navigation from the sidebar workflow
+- Added modern GUI visual polish with cleaner spacing, typography, sidebar highlighting, and styled text areas
+- Added top menu bar with File, Workflow, Settings, and Help menus
+- Added Welcome workflow page with a future logo placeholder
+- Moved Settings out of the sidebar and into the top menu
+- Added UI theme selection with Light, Dark, and Dark blue themes
 
 ## Next
 
-1. Add guided questions for unsupported job signals.
+1. Continue GUI cleanup with cleaner page layouts and better help content.
+2. Add guided questions for unsupported job signals.
 2. Feed job fit strategy into quality improvement history and document versioning.
 3. Add document version history inside each application workspace.
 4. Add template preview and editing.
@@ -57,3 +63,23 @@
 - Removed redundant **Next** button.
 - Kept **Back**, **Skip & Continue**, and **Complete & Continue**.
 - Completion now advances the user automatically to the next workflow step.
+
+
+## Step 21 modern GUI polish
+
+- Added a modern theme layer for the existing sidebar workflow.
+- Increased default window size.
+- Added active-step sidebar highlighting.
+- Added distinct complete and warning sidebar styles.
+- Styled text areas for better readability.
+- Added CustomTkinter dependency for a modern UI base while keeping the existing workflow logic stable.
+
+- Step 21 follow-up: cleaned the Export step controls to avoid cropped action buttons at normal window sizes.
+
+## Step 23 modern cards and profile validation
+
+- Added card-style welcome content inspired by modern dashboard layouts.
+- Improved the profile page into separate contact, identity, and career-background cards.
+- Added numeric-only telephone input validation.
+- Added email-format validation before saving, generating, or saving an application workspace.
+- Changed new-install default theme to Dark blue while preserving saved user theme choices.

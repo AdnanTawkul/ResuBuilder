@@ -1,9 +1,14 @@
-# The GUI uses built-in tkinter, so the app can run without packages.
-# OpenAI support for AI generation.
+# Existing optional modern Tk shell support.
+customtkinter>=5.2.2
+
+# Experimental Qt GUI branch.
+PySide6>=6.7.0
+
+# OpenAI support for optional cloud AI generation.
 openai>=2.0.0
 
 # Required for PDF export.
 reportlab>=4.0.0
 
-# Required for importing existing PDF resumes/CVs.
+# Required for importing existing PDF CVs/covering letters and job descriptions.
 pypdf>=4.0.0

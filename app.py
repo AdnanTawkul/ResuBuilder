@@ -1,6 +1,12 @@
-from src.resume_ai.gui import ResumeAIApp
+"""Primary entry point for ResuBuilder.
+
+The PySide6/Qt interface is now the main application shell.
+Run with:
+    python app.py
+"""
+
+from src.resume_ai.qt_gui import run_qt_app
 
 
 if __name__ == "__main__":
-    app = ResumeAIApp()
-    app.mainloop()
+    run_qt_app()
