@@ -100,3 +100,15 @@ ResuBuilder stores user data in the project-level folder:
 This prevents profiles, settings, workspaces, logs, and application files from being deleted when `build/` and `dist/` are cleaned before rebuilding the executable.
 
 If ResuBuilder is later distributed outside the repository and the project root cannot be detected, the app falls back to storing data beside the executable.
+
+## Local AI dependency
+
+The Windows executable does not include Ollama or model files. Each target computer must install Ollama separately and download the selected model.
+
+Recommended first model:
+
+```powershell
+ollama pull qwen3:8b
+```
+
+Inside ResuBuilder, use **Settings > Open Settings... > Check Ollama Setup** before generating documents on a new computer.

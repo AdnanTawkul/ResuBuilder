@@ -5,6 +5,8 @@ import re
 import sys
 import threading
 import traceback
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -572,7 +574,7 @@ class ResuBuilderQtApp(QMainWindow):
         self.settings_provider_combo.setCurrentText(getattr(self.app_settings, "ai_provider", "Ollama Local"))
         self.settings_generation_mode_combo.setCurrentText(getattr(self.app_settings, "generation_mode", "Balanced"))
         self.settings_ollama_url_edit.setText(getattr(self.app_settings, "ollama_base_url", "http://localhost:11434"))
-        self.settings_ollama_model_combo.setCurrentText(getattr(self.app_settings, "ollama_model", "qwen3:14b"))
+        self.settings_ollama_model_combo.setCurrentText(getattr(self.app_settings, "ollama_model", "qwen3:8b"))
         self.settings_openai_model_combo.setCurrentText(getattr(self.app_settings, "openai_model", "gpt-4.1-mini"))
         self.settings_timeout_spin.setValue(int(getattr(self.app_settings, "timeout_seconds", 120)))
         self.settings_template_combo.setCurrentText(getattr(self.app_settings, "template_name", "ATS Friendly"))
@@ -628,7 +630,7 @@ class ResuBuilderQtApp(QMainWindow):
         ollama_url_edit = QLineEdit(getattr(self.app_settings, "ollama_base_url", "http://localhost:11434"))
         ollama_model_combo = QComboBox()
         ollama_model_combo.addItems(OLLAMA_MODEL_OPTIONS)
-        current_ollama_model = str(getattr(self.app_settings, "ollama_model", "qwen3:14b") or "qwen3:14b")
+        current_ollama_model = str(getattr(self.app_settings, "ollama_model", "qwen3:8b") or "qwen3:8b")
         if current_ollama_model not in OLLAMA_MODEL_OPTIONS:
             ollama_model_combo.addItem(current_ollama_model)
         ollama_model_combo.setCurrentText(current_ollama_model)
@@ -652,6 +654,16 @@ class ResuBuilderQtApp(QMainWindow):
         self._add_labeled_field(ai_grid, 2, 0, "OpenAI model", openai_model_combo)
         self._add_labeled_field(ai_grid, 2, 1, "AI timeout", timeout_spin)
         ai_card.layout.addLayout(ai_grid)
+        ai_actions = QHBoxLayout()
+        ai_actions.setSpacing(12)
+        check_ollama_button = QPushButton("Check Ollama Setup")
+        check_ollama_button.clicked.connect(lambda: self._check_ollama_dialog_values(base_url_edit=ollama_url_edit, model_combo=ollama_model_combo))
+        ollama_help_button = QPushButton("Ollama Help")
+        ollama_help_button.clicked.connect(self._show_ollama_setup_help)
+        ai_actions.addWidget(check_ollama_button)
+        ai_actions.addWidget(ollama_help_button)
+        ai_actions.addStretch(1)
+        ai_card.layout.addLayout(ai_actions)
         content_layout.addWidget(ai_card)
 
         doc_card = Card("Document defaults", "Default generation and PDF settings.")
@@ -717,7 +729,7 @@ class ResuBuilderQtApp(QMainWindow):
             self.app_settings.ai_provider = provider_combo.currentText()
             self.app_settings.generation_mode = generation_mode_combo.currentText()
             self.app_settings.ollama_base_url = ollama_url_edit.text().strip() or "http://localhost:11434"
-            self.app_settings.ollama_model = ollama_model_combo.currentText().strip() or "qwen3:14b"
+            self.app_settings.ollama_model = ollama_model_combo.currentText().strip() or "qwen3:8b"
             self.app_settings.openai_model = openai_model_combo.currentText().strip() or "gpt-4.1-mini"
             self.app_settings.timeout_seconds = int(timeout_spin.value())
             self.app_settings.template_name = template_combo.currentText()
@@ -900,6 +912,26 @@ class ResuBuilderQtApp(QMainWindow):
         card_row.addWidget(Card("3. Job", "Break the job post into company, role, responsibilities, and requirements."), 0, 2)
         card_row.addWidget(Card("4. Generate", "Use Ollama or OpenAI through the existing AI service layer."), 1, 0)
         layout.addLayout(card_row)
+
+        setup_card = Card(
+            "Local AI setup",
+            "New computer? Check that Ollama is running and that the selected model is installed before generating documents.",
+        )
+        setup_row = QHBoxLayout()
+        setup_row.setSpacing(12)
+        check_button = QPushButton("Check Ollama")
+        check_button.setObjectName("PrimaryButton")
+        check_button.clicked.connect(lambda: self._check_ollama_ready(show_success=True))
+        help_button = QPushButton("Show Setup Help")
+        help_button.clicked.connect(self._show_ollama_setup_help)
+        download_button = QPushButton("Open Ollama Download")
+        download_button.clicked.connect(self._open_ollama_download)
+        setup_row.addWidget(check_button)
+        setup_row.addWidget(help_button)
+        setup_row.addWidget(download_button)
+        setup_row.addStretch(1)
+        setup_card.layout.addLayout(setup_row)
+        layout.addWidget(setup_card)
         layout.addStretch(1)
         return page
 
@@ -1629,7 +1661,7 @@ class ResuBuilderQtApp(QMainWindow):
 
         self.settings_ollama_model_combo = QComboBox()
         self.settings_ollama_model_combo.addItems(OLLAMA_MODEL_OPTIONS)
-        current_ollama_model = str(getattr(self.app_settings, "ollama_model", "qwen3:14b") or "qwen3:14b")
+        current_ollama_model = str(getattr(self.app_settings, "ollama_model", "qwen3:8b") or "qwen3:8b")
         if current_ollama_model not in OLLAMA_MODEL_OPTIONS:
             self.settings_ollama_model_combo.addItem(current_ollama_model)
         self.settings_ollama_model_combo.setCurrentText(current_ollama_model)
@@ -1664,6 +1696,16 @@ class ResuBuilderQtApp(QMainWindow):
         self._add_labeled_field(ai_grid, 2, 0, "OpenAI model", self.settings_openai_model_combo)
         self._add_labeled_field(ai_grid, 2, 1, "AI timeout", self.settings_timeout_spin)
         ai_card.layout.addLayout(ai_grid)
+        ai_actions = QHBoxLayout()
+        ai_actions.setSpacing(12)
+        check_ollama_button = QPushButton("Check Ollama Setup")
+        check_ollama_button.clicked.connect(lambda: self._check_ollama_from_settings(show_success=True))
+        ollama_help_button = QPushButton("Ollama Help")
+        ollama_help_button.clicked.connect(self._show_ollama_setup_help)
+        ai_actions.addWidget(check_ollama_button)
+        ai_actions.addWidget(ollama_help_button)
+        ai_actions.addStretch(1)
+        ai_card.layout.addLayout(ai_actions)
         content_layout.addWidget(ai_card)
 
         document_card = Card("Document defaults", "Set the default generation template and export format used by the Generate and Export pages.")
@@ -2422,6 +2464,92 @@ class ResuBuilderQtApp(QMainWindow):
     def _export_profile_json(self) -> None:
         self._save_profile_as()
 
+    def _normalized_ollama_base_url(self, base_url: str | None = None) -> str:
+        value = str(base_url or getattr(self.app_settings, "ollama_base_url", "http://localhost:11434") or "http://localhost:11434").strip()
+        return value.rstrip("/") or "http://localhost:11434"
+
+    def _fetch_ollama_models(self, base_url: str, timeout_seconds: int = 5) -> tuple[bool, list[str], str]:
+        """Return installed Ollama model names from the local Ollama API."""
+        url = f"{self._normalized_ollama_base_url(base_url)}/api/tags"
+        try:
+            request = urllib.request.Request(url, headers={"Accept": "application/json"})
+            with urllib.request.urlopen(request, timeout=max(2, timeout_seconds)) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except urllib.error.URLError as exc:
+            return False, [], f"Could not connect to Ollama at {url}. {exc}"
+        except TimeoutError:
+            return False, [], f"Timed out while connecting to Ollama at {url}."
+        except Exception as exc:  # noqa: BLE001
+            return False, [], f"Could not read Ollama model list from {url}. {exc}"
+
+        models: list[str] = []
+        for item in payload.get("models", []):
+            if isinstance(item, dict):
+                name = str(item.get("name", "") or "").strip()
+                if name:
+                    models.append(name)
+        return True, sorted(set(models)), ""
+
+    def _ollama_setup_message(self, base_url: str, model: str, detail: str = "") -> str:
+        detail_text = f"\n\nDetails:\n{detail}" if detail else ""
+        return (
+            "Ollama is not ready on this computer.\n\n"
+            f"ResuBuilder is configured to use:\n{base_url}\n\n"
+            "To use local AI on this computer:\n"
+            "1. Install Ollama for Windows from https://ollama.com/download/windows\n"
+            "2. Open PowerShell\n"
+            f"3. Run: ollama pull {model}\n"
+            "4. Start Ollama if it is not already running\n"
+            "5. Restart ResuBuilder or click Check Ollama Setup again\n\n"
+            "Recommended models:\n"
+            "- qwen3:8b for most computers\n"
+            "- qwen3:14b for stronger computers\n"
+            "- llama3.1:8b as a backup option"
+            f"{detail_text}"
+        )
+
+    def _check_ollama_dialog_values(self, base_url_edit: QLineEdit, model_combo: QComboBox) -> bool:
+        base_url = self._normalized_ollama_base_url(base_url_edit.text())
+        model = model_combo.currentText().strip() or "qwen3:8b"
+        return self._check_ollama_ready(show_success=True, base_url=base_url, model=model)
+
+    def _check_ollama_from_settings(self, show_success: bool = True) -> bool:
+        self._sync_settings_from_controls()
+        return self._check_ollama_ready(show_success=show_success)
+
+    def _check_ollama_ready(self, show_success: bool = False, base_url: str | None = None, model: str | None = None) -> bool:
+        base_url = self._normalized_ollama_base_url(base_url)
+        model = str(model or getattr(self.app_settings, "ollama_model", "qwen3:8b") or "qwen3:8b").strip()
+        ok, installed_models, error = self._fetch_ollama_models(base_url, timeout_seconds=5)
+        if not ok:
+            QMessageBox.warning(self, "Ollama setup needed", self._ollama_setup_message(base_url, model, error))
+            return False
+        if model not in installed_models:
+            installed = "\n".join(f"- {name}" for name in installed_models) if installed_models else "No local models found."
+            detail = f"Selected model '{model}' is not installed.\n\nInstalled models:\n{installed}"
+            QMessageBox.warning(self, "Ollama model missing", self._ollama_setup_message(base_url, model, detail))
+            return False
+        if show_success:
+            QMessageBox.information(
+                self,
+                "Ollama ready",
+                f"Ollama is reachable at {base_url}.\n\nInstalled model ready: {model}",
+            )
+        return True
+
+    def _ensure_ai_ready(self, settings: AISettings, action_name: str) -> bool:
+        if settings.provider != "Ollama Local":
+            return True
+        return self._check_ollama_ready(show_success=False, base_url=settings.ollama_base_url, model=settings.ollama_model)
+
+    def _show_ollama_setup_help(self) -> None:
+        model = str(getattr(self.app_settings, "ollama_model", "qwen3:8b") or "qwen3:8b")
+        base_url = self._normalized_ollama_base_url()
+        QMessageBox.information(self, "Ollama setup help", self._ollama_setup_message(base_url, model))
+
+    def _open_ollama_download(self) -> None:
+        QDesktopServices.openUrl(QUrl("https://ollama.com/download/windows"))
+
     def _settings_to_ai_settings(self) -> AISettings:
         return AISettings(
             use_ai=self.app_settings.use_ai,
@@ -2451,6 +2579,8 @@ class ResuBuilderQtApp(QMainWindow):
         self._job_fit_job_id += 1
         job_id = self._job_fit_job_id
         settings = self._settings_to_ai_settings()
+        if not self._ensure_ai_ready(settings, "job fit analysis"):
+            return
         company = self._job_company()
         role = self._job_title()
 
@@ -2526,6 +2656,8 @@ class ResuBuilderQtApp(QMainWindow):
             job_fit_analysis=self.job_fit_analysis,
         )
         context = QtGenerationContext(document_type=document_type, request=request)
+        if not self._ensure_ai_ready(request.ai_settings, "generation"):
+            return
 
         self._generation_running = True
         self._generation_job_id += 1
@@ -2702,10 +2834,13 @@ class ResuBuilderQtApp(QMainWindow):
             QMessageBox.information(self, "Review task running", "Wait for the current review or improvement task to finish.")
             return
 
+        request = self._build_review_generation_request(document_type)
+        if not self._ensure_ai_ready(request.ai_settings, "AI quality review"):
+            return
+
         self._ai_review_running = True
         self._ai_review_job_id += 1
         job_id = self._ai_review_job_id
-        request = self._build_review_generation_request(document_type)
         self._set_review_action_buttons_enabled(False)
         self.ai_review_status_label.setText(f"Running AI quality review with {request.ai_settings.provider} / {request.ai_settings.ollama_model}...")
         self.ai_quality_review_edit.setPlainText("Working. The AI is reading the selected document, job details, candidate evidence, and quality report.")
@@ -2788,6 +2923,8 @@ class ResuBuilderQtApp(QMainWindow):
         self._improvement_job_id += 1
         job_id = self._improvement_job_id
         request = self._build_review_generation_request(document_type)
+        if not self._ensure_ai_ready(request.ai_settings, "quality improvement"):
+            return
         ai_review = self.ai_quality_review_edit.toPlainText().strip() if hasattr(self, "ai_quality_review_edit") else self.ai_quality_review
         if ai_review.startswith("No AI review") or ai_review.startswith("AI review cleared"):
             ai_review = ""
@@ -3064,7 +3201,7 @@ class ResuBuilderQtApp(QMainWindow):
         if hasattr(self, "settings_ollama_url_edit"):
             self.app_settings.ollama_base_url = self.settings_ollama_url_edit.text().strip() or "http://localhost:11434"
         if hasattr(self, "settings_ollama_model_combo"):
-            self.app_settings.ollama_model = self.settings_ollama_model_combo.currentText().strip() or "qwen3:14b"
+            self.app_settings.ollama_model = self.settings_ollama_model_combo.currentText().strip() or "qwen3:8b"
         if hasattr(self, "settings_openai_model_combo"):
             self.app_settings.openai_model = self.settings_openai_model_combo.currentText().strip() or "gpt-4.1-mini"
         if hasattr(self, "settings_timeout_spin"):
@@ -3108,7 +3245,7 @@ class ResuBuilderQtApp(QMainWindow):
             self.settings_provider_combo.setCurrentText(getattr(self.app_settings, "ai_provider", "Ollama Local"))
             self.settings_generation_mode_combo.setCurrentText(getattr(self.app_settings, "generation_mode", "Balanced"))
             self.settings_ollama_url_edit.setText(getattr(self.app_settings, "ollama_base_url", "http://localhost:11434"))
-            self.settings_ollama_model_combo.setCurrentText(getattr(self.app_settings, "ollama_model", "qwen3:14b"))
+            self.settings_ollama_model_combo.setCurrentText(getattr(self.app_settings, "ollama_model", "qwen3:8b"))
             self.settings_openai_model_combo.setCurrentText(getattr(self.app_settings, "openai_model", "gpt-4.1-mini"))
             self.settings_timeout_spin.setValue(int(getattr(self.app_settings, "timeout_seconds", 120)))
             self.settings_template_combo.setCurrentText(getattr(self.app_settings, "template_name", "ATS Friendly"))
