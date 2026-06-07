@@ -84,7 +84,7 @@ class QMessageBox:
     """Silent replacement for QMessageBox convenience dialogs.
 
     Native QMessageBox convenience functions trigger the Windows system notification sound.
-    The Qt experiment uses this small modal dialog instead so save/load/generate notices stay quiet.
+    The Qt app uses this small modal dialog so save/load/generate notices stay quiet.
     It intentionally mimics the subset of QMessageBox used in this file.
     """
 
@@ -213,7 +213,7 @@ class GenerationSignals(QObject):
     """Signals used by the background generation thread.
 
     Using Python threading here is deliberate. The first Qt prototype used QThread, which can be easy to
-    misuse and can make the experimental app appear to close without a useful error when the worker
+    misuse and can make the app appear to close without a useful error when the worker
     lifecycle is wrong. These signals keep all UI updates on the main Qt thread while the AI call runs in
     a normal Python thread.
     """
@@ -822,10 +822,6 @@ class ResuBuilderQtApp(QMainWindow):
             sidebar_layout.addWidget(button)
 
         sidebar_layout.addStretch(1)
-        warning = QLabel("Experimental branch.\nKeep the old GUI alive until Qt reaches feature parity.")
-        warning.setObjectName("WarningText")
-        warning.setWordWrap(True)
-        sidebar_layout.addWidget(warning)
 
         self.stack = QStackedWidget()
         self.stack.setObjectName("MainStack")
@@ -3114,8 +3110,8 @@ class ResuBuilderQtApp(QMainWindow):
         QMessageBox.information(
             self,
             "About ResuBuilder",
-            "This is an experimental PySide6 interface for ResuBuilder.\n\n"
-            "It should prove the modern UI direction without replacing the working Tk/CustomTkinter app yet.",
+            "ResuBuilder is a desktop application for creating tailored CVs and covering letters.\n\n"
+            "It helps structure candidate evidence, analyze job fit, generate documents with local or cloud AI, review quality, and export complete application packages.",
         )
 
 

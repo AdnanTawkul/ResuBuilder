@@ -22,3 +22,7 @@ The legacy GUI should stay available until the Windows package has passed full t
 - Legacy GUI is retained as backup
 - Windows packaging preparation has started
 - Do not delete legacy files yet
+
+## Step 26B cleanup
+
+Removed remaining user-facing experimental labels from the primary Qt app, including the sidebar notice and About dialog wording.
