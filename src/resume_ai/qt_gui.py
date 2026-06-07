@@ -63,6 +63,7 @@ from .qt_theme import DARK_BLUE_QSS, THEME_OPTIONS, theme_qss
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 ASSET_DIR = Path(__file__).resolve().parent / "assets"
 LOGO_PATH = ASSET_DIR / "resubuilder_logo.svg"
+PROFILE_PATH = Path("data") / "candidate_profile.json"
 
 OLLAMA_MODEL_OPTIONS = [
     "qwen3:8b",
@@ -1917,10 +1918,34 @@ class ResuBuilderQtApp(QMainWindow):
             f"AI quality review: {'yes' if self.ai_quality_review.strip() else 'no'}"
         )
 
+    def _workspace_open_dir(self) -> Path:
+        configured = getattr(self.app_settings, "last_workspace_dir", "") or ""
+        if configured:
+            path = Path(configured)
+            try:
+                path.mkdir(parents=True, exist_ok=True)
+                return path
+            except OSError:
+                pass
+        return ensure_applications_dir()
+
     def _suggest_workspace_path(self) -> Path:
         metadata = self._workspace_metadata()
         filename = suggested_application_filename(metadata.get("target_company", ""), metadata.get("target_role", ""))
-        return ensure_applications_dir() / filename
+        return self._workspace_open_dir() / filename
+
+    def _remember_workspace_dir(self, path: Path) -> None:
+        try:
+            folder = path.parent.resolve()
+        except OSError:
+            folder = path.parent
+        self.app_settings.last_workspace_dir = str(folder)
+        if hasattr(self, "settings_workspace_dir_edit"):
+            self.settings_workspace_dir_edit.setText(str(folder))
+        try:
+            save_app_settings(self.app_settings)
+        except Exception:  # noqa: BLE001
+            self._write_qt_log("Workspace directory setting save failed:\n" + traceback.format_exc())
 
     def _new_workspace(self) -> None:
         answer = QMessageBox.question(
@@ -1994,6 +2019,7 @@ class ResuBuilderQtApp(QMainWindow):
             QMessageBox.critical(self, "Workspace save failed", str(exc))
             return
         self.current_workspace_path = saved_path
+        self._remember_workspace_dir(saved_path)
         self.workspace_path_edit.setText(str(saved_path))
         self._sync_export_metadata_from_workspace(force_empty_only=True)
         self._update_workspace_status("Workspace saved successfully.")
@@ -2003,7 +2029,7 @@ class ResuBuilderQtApp(QMainWindow):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Load application workspace",
-            str(ensure_applications_dir()),
+            str(self._workspace_open_dir()),
             "Application workspace (*.json);;JSON files (*.json);;All files (*.*)",
         )
         if not file_path:
@@ -2016,6 +2042,7 @@ class ResuBuilderQtApp(QMainWindow):
             QMessageBox.critical(self, "Workspace load failed", str(exc))
             return
         self.current_workspace_path = Path(file_path)
+        self._remember_workspace_dir(self.current_workspace_path)
         self.workspace_path_edit.setText(str(self.current_workspace_path))
         self._update_workspace_status("Workspace loaded successfully.")
         self.show_page("Workspace")
@@ -2225,16 +2252,16 @@ class ResuBuilderQtApp(QMainWindow):
         self._set_evidence_form(
             {
                 "type": "Project",
-                "title": "Face-Aware FlowMag for Micro-Expression Spotting",
-                "context": "Research-engineering project adapting self-supervised motion magnification to subtle facial micro-expression spotting on CASME II.",
-                "tools": "Python, PyTorch, optical flow, CASME II, facial landmark masks, LBP-TOP, SVM",
-                "methods": "Fine-tuned a pretrained FlowMag-style motion magnification model, added face-aware regularization with landmark-based masks, compared baseline inference, test-time adaptation, and face-aware training variants.",
-                "outcome": "Produced a more spatially meaningful facial motion amplification pipeline and supported downstream micro-expression evaluation through motion analysis and feature-based classification.",
-                "metrics": "Research repository, loss formulation, baseline comparison, motion error analysis, downstream LBP-TOP + SVM evaluation workflow.",
-                "signals": "computer vision, deep learning, optical flow, model adaptation, transfer learning, algorithms, validation, neural engineering",
+                "title": "Data Automation and Reporting Tool",
+                "context": "Internal project created to reduce repetitive manual reporting work and make recurring data checks easier to review.",
+                "tools": "Python, pandas, CSV/Excel files, Git, basic data validation",
+                "methods": "Built scripts to load structured data, clean inconsistent fields, validate required values, generate summary outputs, and document the workflow so it could be repeated reliably.",
+                "outcome": "Improved the consistency of recurring reports and gave the team a clearer way to review data quality before using the results in decisions.",
+                "metrics": "Example evidence only. Replace with truthful proof such as time saved, error reduction, number of files processed, user feedback, repository link, or validation notes.",
+                "signals": "Python, automation, data processing, quality, documentation, problem solving, Git",
             }
         )
-        QMessageBox.information(self, "Example loaded", "Example evidence loaded into the form. Review it, edit it, then click Add Evidence.")
+        QMessageBox.information(self, "Example loaded", "Generic example evidence loaded into the form. Replace it with truthful candidate evidence before adding it.")
 
     def _build_profile(self) -> CandidateProfile:
         return CandidateProfile(
@@ -2331,20 +2358,29 @@ class ResuBuilderQtApp(QMainWindow):
             self._write_qt_log("Profile save failed:\n" + traceback.format_exc())
             QMessageBox.critical(self, "Profile save failed", str(exc))
             return
-        QMessageBox.information(self, "Profile saved", "Profile saved to data/candidate_profile.json.")
+        QMessageBox.information(self, "Profile saved", f"Profile saved to:\n{PROFILE_PATH}")
 
     def _load_saved_profile(self) -> None:
+        PROFILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        start_path = PROFILE_PATH if PROFILE_PATH.exists() else PROFILE_PATH.parent
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load saved profile",
+            str(start_path),
+            "Profile JSON (*.json);;JSON files (*.json);;All files (*.*)",
+        )
+        if not file_path:
+            return
         try:
-            data = load_json()
+            data = json.loads(Path(file_path).read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("Profile JSON must contain a JSON object.")
         except Exception as exc:  # noqa: BLE001
             self._write_qt_log("Profile load failed:\n" + traceback.format_exc())
             QMessageBox.critical(self, "Profile load failed", str(exc))
             return
-        if not data:
-            QMessageBox.information(self, "No saved profile", "No saved profile was found in data/candidate_profile.json.")
-            return
         self._apply_profile_data(data)
-        QMessageBox.information(self, "Profile loaded", "Saved profile loaded into the Qt profile page.")
+        QMessageBox.information(self, "Profile loaded", f"Profile loaded from:\n{file_path}")
 
     def _import_profile_json(self) -> None:
         file_path, _ = QFileDialog.getOpenFileName(

@@ -150,3 +150,8 @@ Next check:
 ### Step 24AB . Rounded scrollbar handle polish
 - Force vertical and horizontal scrollbar handles to render as rounded pill controls.
 - Keep existing theme-specific colors and gradients.
+
+## Step 26C
+
+- Improved profile/workspace load behavior for packaged builds.
+- Replaced the project-specific default evidence example with a generic example.
