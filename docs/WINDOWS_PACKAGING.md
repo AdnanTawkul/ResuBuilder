@@ -1,40 +1,30 @@
 # Windows Packaging Guide
 
-This document prepares ResuBuilder for a local Windows executable build.
+ResuBuilder uses PyInstaller to build a Windows executable.
 
 ## Before building
 
-Confirm the app works from source:
+From the project root, activate the virtual environment:
 
 ```powershell
-python app.py
+.\.venv\Scripts\activate
 ```
 
-Confirm the legacy GUI still opens if needed:
+Install dependencies:
 
 ```powershell
-python app_legacy.py
+pip install -r requirements.txt
 ```
 
-## Optional icon
+## Clean old builds
 
-The app loads the SVG logo from:
-
-```text
-src/resume_ai/assets/resubuilder_logo.svg
+```powershell
+Remove-Item -Recurse -Force build, dist -ErrorAction SilentlyContinue
 ```
-
-For the Windows `.exe` icon, add an ICO file here:
-
-```text
-src/resume_ai/assets/resubuilder_icon.ico
-```
-
-The SVG logo is the design source. The `.ico` file is only for Windows executable packaging.
 
 ## Build
 
-From the project root, run:
+Run:
 
 ```powershell
 scripts\build_windows.ps1
@@ -46,39 +36,72 @@ Or:
 scripts\build_windows.bat
 ```
 
-The executable folder will be created at:
+## Run the build
 
-```text
-dist/ResuBuilder/
+```powershell
+dist\ResuBuilder\ResuBuilder.exe
 ```
 
-Run:
+## Smoke test the executable
+
+Test the packaged `.exe`, not only `python app.py`:
 
 ```text
-dist/ResuBuilder/ResuBuilder.exe
+1. Open ResuBuilder.exe
+2. Load profile
+3. Load or add evidence
+4. Fill Job page
+5. Analyze job fit
+6. Generate CV
+7. Generate covering letter
+8. Run quality check
+9. Run AI quality review
+10. Improve with quality fixes
+11. Export selected PDF
+12. Export application package
+13. Save workspace
+14. Close app
+15. Reopen app
+16. Load workspace
+17. Confirm everything restored
 ```
 
 ## Do not commit build output
 
-The following folders should stay ignored by Git:
+Do not commit:
 
 ```text
 build/
 dist/
-*.spec.bak
+*.exe
 ```
 
-## Packaging test checklist
+Upload the `.exe` or zipped `dist/ResuBuilder/` folder as a GitHub Release asset instead.
 
-- App launches from `dist/ResuBuilder/ResuBuilder.exe`
-- Logo appears
-- Profile loads
-- Ollama settings are visible
-- CV generation works with Ollama running
-- Covering letter generation works
-- Quality check works
-- PDF export works
-- Application package export works
-- Workspace save/load works
+## Common packaging problems
 
-Do not publish a release until this checklist passes.
+### The executable shows old text
+
+You are running an old build. Delete `build/` and `dist/`, then rebuild.
+
+### Missing logo or icons
+
+Make sure assets are included in the PyInstaller spec file and exist under:
+
+```text
+src/resume_ai/assets/
+```
+
+### Ollama does not work from the executable
+
+Confirm Ollama is installed and available at:
+
+```text
+http://localhost:11434
+```
+
+Then test from PowerShell:
+
+```powershell
+Invoke-RestMethod http://localhost:11434/api/tags
+```
