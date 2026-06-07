@@ -356,15 +356,14 @@ class Card(QFrame):
 
 
 class ResuBuilderQtApp(QMainWindow):
-    """Experimental PySide6 interface.
+    """Primary PySide6 interface.
 
-    This file intentionally lives beside the existing Tk/CustomTkinter GUI. Do not delete app.py or gui.py
-    until the Qt interface reaches full feature parity.
+    This file contains the primary ResuBuilder desktop interface. The legacy Tkinter GUI is kept available through app_legacy.py as a backup during transition.
     """
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("ResuBuilder Qt Experiment")
+        self.setWindowTitle("ResuBuilder")
         self.resize(1380, 860)
         self.setMinimumSize(1180, 760)
 
@@ -806,7 +805,7 @@ class ResuBuilderQtApp(QMainWindow):
         brand_text.setSpacing(2)
         brand = QLabel("ResuBuilder")
         brand.setObjectName("BrandTitle")
-        subtitle = QLabel("Qt GUI experiment")
+        subtitle = QLabel("AI application builder")
         subtitle.setObjectName("BrandSubtitle")
         brand_text.addWidget(brand)
         brand_text.addWidget(subtitle)
@@ -867,7 +866,7 @@ class ResuBuilderQtApp(QMainWindow):
     def _build_welcome_page(self) -> QWidget:
         page, layout = self._page_container(
             "Welcome to ResuBuilder",
-            "A modern experiment shell for creating tailored CVs and covering letters with local AI.",
+            "A modern desktop app for creating tailored CVs and covering letters with local or cloud AI.",
         )
 
         hero = QFrame()
@@ -881,7 +880,7 @@ class ResuBuilderQtApp(QMainWindow):
         hero_title = QLabel("Build stronger applications without losing truth control.")
         hero_title.setObjectName("PageTitle")
         hero_text = QLabel(
-            "This Qt branch is a controlled UI experiment. The backend stays untouched while we test whether PySide6 can deliver the modern card-based interface you want."
+            "ResuBuilder helps you structure your profile, match it to a role, generate tailored documents, review quality, and export a complete application package."
         )
         hero_text.setObjectName("PageSubtitle")
         hero_text.setWordWrap(True)
@@ -1739,7 +1738,7 @@ class ResuBuilderQtApp(QMainWindow):
         folders_card.layout.addLayout(folders_grid)
         content_layout.addWidget(folders_card)
 
-        appearance_card = Card("Appearance", "Switch the Qt interface theme. This only affects the experimental Qt app.")
+        appearance_card = Card("Appearance", "Switch the ResuBuilder interface theme.")
         appearance_row = QHBoxLayout()
         appearance_row.setSpacing(12)
         self.settings_theme_combo = QComboBox()
@@ -1874,7 +1873,7 @@ class ResuBuilderQtApp(QMainWindow):
         pdf_page_size = self.export_page_size_combo.currentText() if hasattr(self, "export_page_size_combo") else getattr(self.app_settings, "pdf_page_size", "A4")
         export_dir = self.export_dir_edit.text().strip() if hasattr(self, "export_dir_edit") else getattr(self.app_settings, "last_export_dir", "exports")
         return {
-            "source": "PySide6 experiment",
+            "source": "ResuBuilder",
             "metadata": metadata,
             "profile": self._profile_to_dict(),
             "structured_evidence_entries": [dict(entry) for entry in self.evidence_entries],
@@ -1918,7 +1917,7 @@ class ResuBuilderQtApp(QMainWindow):
             f"Covering letter generated: {'yes' if self.generated_covering_letter.strip() else 'no'}\n"
             f"Structured evidence blocks: {len(self.evidence_entries)}\n"
             f"Job fit analysis: {'yes' if self.job_fit_analysis.strip() else 'no'}\n"
-            f"Quality report: {'yes' if self._quality_report_text() != 'No quality report exported from the Qt experiment.' else 'no'}\n"
+            f"Quality report: {'yes' if self._quality_report_text() != 'No quality report exported from ResuBuilder.' else 'no'}\n"
             f"AI quality review: {'yes' if self.ai_quality_review.strip() else 'no'}"
         )
 
@@ -2024,7 +2023,7 @@ class ResuBuilderQtApp(QMainWindow):
         self.workspace_path_edit.setText(str(self.current_workspace_path))
         self._update_workspace_status("Workspace loaded successfully.")
         self.show_page("Workspace")
-        QMessageBox.information(self, "Workspace loaded", "Application workspace loaded into the Qt experiment.")
+        QMessageBox.information(self, "Workspace loaded", "Application workspace loaded into ResuBuilder.")
 
     def _apply_workspace_snapshot(self, snapshot: dict) -> None:
         metadata = snapshot.get("metadata") or {}
@@ -2046,7 +2045,7 @@ class ResuBuilderQtApp(QMainWindow):
         # Qt workspaces now store evidence both inside the profile and at the top level.
         # The top-level copy is deliberate: it makes workspace load robust even if an older
         # profile serializer drops unknown fields. It also lets us recover evidence from
-        # workspaces created during the PySide6 experiment.
+        # workspaces created during earlier PySide6 builds.
         top_level_entries = snapshot.get("structured_evidence_entries")
         if top_level_entries and not profile_data.get("structured_evidence_entries"):
             profile_data["structured_evidence_entries"] = top_level_entries
@@ -2876,7 +2875,7 @@ class ResuBuilderQtApp(QMainWindow):
                 parts.append("# AI Quality Review\n\n" + review_text)
         if parts:
             return "\n\n---\n\n".join(parts)
-        return "No quality report exported from the Qt experiment."
+        return "No quality report exported from ResuBuilder."
 
     def _export_settings(self) -> tuple[str, str]:
         template = self.export_pdf_template_combo.currentText() if hasattr(self, "export_pdf_template_combo") else "ATS Friendly"
@@ -2954,7 +2953,7 @@ class ResuBuilderQtApp(QMainWindow):
             "modified_at": datetime.now().isoformat(timespec="seconds"),
         }
         snapshot = {
-            "source": "PySide6 experiment",
+            "source": "ResuBuilder",
             "profile": self._build_profile().__dict__,
             "job_details": self._job_details_dict(),
             "job_description": self._combined_job_brief(),
@@ -3114,7 +3113,7 @@ class ResuBuilderQtApp(QMainWindow):
     def _show_about(self) -> None:
         QMessageBox.information(
             self,
-            "About ResuBuilder Qt Experiment",
+            "About ResuBuilder",
             "This is an experimental PySide6 interface for ResuBuilder.\n\n"
             "It should prove the modern UI direction without replacing the working Tk/CustomTkinter app yet.",
         )
