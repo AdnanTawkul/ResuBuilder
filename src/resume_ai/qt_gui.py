@@ -379,6 +379,7 @@ class ResuBuilderQtApp(QMainWindow):
         self.generated_covering_letter = ""
         self.job_fit_analysis = ""
         self.ai_quality_review = ""
+        self.manual_edit_instructions = ""
         self.evidence_entries: list[dict[str, str]] = []
         self._legacy_structured_evidence_text = ""
         self.current_workspace_path: Path | None = None
@@ -390,6 +391,7 @@ class ResuBuilderQtApp(QMainWindow):
         self._ai_review_job_id = 0
         self._improvement_running = False
         self._improvement_job_id = 0
+        self._improvement_reason = "quality fixes"
         self.generation_signals = GenerationSignals()
         self.generation_signals.finished.connect(self._generation_finished)
         self.generation_signals.failed.connect(self._generation_failed)
@@ -1060,7 +1062,32 @@ class ResuBuilderQtApp(QMainWindow):
         identity.layout.addWidget(self.summary_edit)
         content_layout.addWidget(identity)
 
-        evidence = Card("Evidence snapshot", "This is not the final evidence builder. It is enough to prove the Qt generation flow.")
+        background = Card(
+            "Education, languages, and links",
+            "Add reusable profile facts once so CVs and covering letters do not miss basic sections.",
+        )
+        self.education_edit = QTextEdit()
+        self.education_edit.setMinimumHeight(110)
+        self.education_edit.setPlaceholderText(
+            "Example:\nM.Sc. Neural Engineering, HTW Saar, 2022-2025\nB.Sc. Biomedical Engineering, HTW Saar, 2018-2022"
+        )
+        self.languages_edit = QTextEdit()
+        self.languages_edit.setMinimumHeight(80)
+        self.languages_edit.setPlaceholderText("Example: English - Professional, German - B2, Arabic - Native")
+        self.links_edit = QTextEdit()
+        self.links_edit.setMinimumHeight(80)
+        self.links_edit.setPlaceholderText(
+            "Example:\nLinkedIn: https://www.linkedin.com/in/your-name\nGitHub: https://github.com/your-name\nPortfolio: https://your-site.com"
+        )
+        background.layout.addWidget(QLabel("Education"))
+        background.layout.addWidget(self.education_edit)
+        background.layout.addWidget(QLabel("Languages"))
+        background.layout.addWidget(self.languages_edit)
+        background.layout.addWidget(QLabel("Links"))
+        background.layout.addWidget(self.links_edit)
+        content_layout.addWidget(background)
+
+        evidence = Card("Evidence snapshot", "Use this for quick notes. Use the Evidence page for stronger structured proof.")
         self.skills_edit = QTextEdit()
         self.skills_edit.setMinimumHeight(90)
         self.projects_edit = QTextEdit()
@@ -1449,6 +1476,33 @@ class ResuBuilderQtApp(QMainWindow):
         review_grid.addWidget(show_button, 1, 3)
         controls.layout.addLayout(review_grid)
         content_layout.addWidget(controls)
+
+        edit_card = Card(
+            "AI edit instructions",
+            "Optional. After generation, tell the AI exactly how to revise the selected CV or covering letter. Use this for focused edits such as reordering skills, emphasizing specific evidence, tightening tone, or removing weak sections.",
+        )
+        edit_card.layout.addWidget(QLabel("Instructions for selected document"))
+        self.manual_edit_instructions_edit = QPlainTextEdit()
+        self.manual_edit_instructions_edit.setMinimumHeight(130)
+        self.manual_edit_instructions_edit.setPlaceholderText(
+            "Examples:\n"
+            "- Move Python and PyTorch to the start of the skills section.\n"
+            "- Focus more on computer vision, model validation, and research engineering.\n"
+            "- Make the covering letter more concise and less generic.\n"
+            "- Remove unsupported claims and keep the tone direct."
+        )
+        edit_card.layout.addWidget(self.manual_edit_instructions_edit)
+        edit_actions = QHBoxLayout()
+        edit_actions.addStretch(1)
+        self.apply_custom_edit_button = QPushButton("Apply AI Edit Instructions")
+        self.apply_custom_edit_button.setObjectName("PrimaryButton")
+        self.apply_custom_edit_button.setMinimumHeight(46)
+        self.apply_custom_edit_button.setMinimumWidth(230)
+        self.apply_custom_edit_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.apply_custom_edit_button.clicked.connect(self._start_custom_ai_edit)
+        edit_actions.addWidget(self.apply_custom_edit_button)
+        edit_card.layout.addLayout(edit_actions)
+        content_layout.addWidget(edit_card)
 
         score_row = QGridLayout()
         score_row.setSpacing(18)
@@ -1934,6 +1988,7 @@ class ResuBuilderQtApp(QMainWindow):
             "generated_covering_letter": self.generated_covering_letter,
             "quality_report": self._quality_report_text(),
             "ai_quality_review": self.ai_quality_review,
+            "manual_edit_instructions": self._manual_edit_instructions_text(),
             "job_fit_analysis": self.job_fit_analysis,
             "ui_state": {
                 "document_type": self.document_type_combo.currentText() if hasattr(self, "document_type_combo") else "CV",
@@ -1968,7 +2023,8 @@ class ResuBuilderQtApp(QMainWindow):
             f"Structured evidence blocks: {len(self.evidence_entries)}\n"
             f"Job fit analysis: {'yes' if self.job_fit_analysis.strip() else 'no'}\n"
             f"Quality report: {'yes' if self._quality_report_text() != 'No quality report exported from ResuBuilder.' else 'no'}\n"
-            f"AI quality review: {'yes' if self.ai_quality_review.strip() else 'no'}"
+            f"AI quality review: {'yes' if self.ai_quality_review.strip() else 'no'}\n"
+            f"Manual edit instructions: {'yes' if self._manual_edit_instructions_text().strip() else 'no'}"
         )
 
     def _workspace_open_dir(self) -> Path:
@@ -2027,6 +2083,9 @@ class ResuBuilderQtApp(QMainWindow):
         self.generated_covering_letter = ""
         self.job_fit_analysis = ""
         self.ai_quality_review = ""
+        self.manual_edit_instructions = ""
+        if hasattr(self, "manual_edit_instructions_edit"):
+            self.manual_edit_instructions_edit.clear()
         if hasattr(self, "job_fit_edit"):
             self.job_fit_edit.clear()
         if hasattr(self, "job_fit_status_label"):
@@ -2150,6 +2209,9 @@ class ResuBuilderQtApp(QMainWindow):
             self.ai_quality_review_edit.setPlainText(self.ai_quality_review or "No AI review saved in this workspace.")
         if hasattr(self, "ai_review_status_label"):
             self.ai_review_status_label.setText("AI review loaded from workspace." if self.ai_quality_review.strip() else "No AI review saved in this workspace.")
+        self.manual_edit_instructions = str(snapshot.get("manual_edit_instructions", "") or "")
+        if hasattr(self, "manual_edit_instructions_edit"):
+            self.manual_edit_instructions_edit.setPlainText(self.manual_edit_instructions)
         self.job_fit_analysis = str(snapshot.get("job_fit_analysis", "") or "")
         if hasattr(self, "job_fit_edit"):
             self.job_fit_edit.setPlainText(self.job_fit_analysis)
@@ -2324,9 +2386,12 @@ class ResuBuilderQtApp(QMainWindow):
             location=self.location_edit.text().strip(),
             title=self.title_edit.text().strip(),
             summary=self.summary_edit.toPlainText().strip(),
-            skills=self.skills_edit.toPlainText().strip(),
-            projects=self.projects_edit.toPlainText().strip(),
+            studies=self.education_edit.toPlainText().strip() if hasattr(self, "education_edit") else "",
             professions=self.professions_edit.toPlainText().strip(),
+            projects=self.projects_edit.toPlainText().strip(),
+            skills=self.skills_edit.toPlainText().strip(),
+            languages=self.languages_edit.toPlainText().strip() if hasattr(self, "languages_edit") else "",
+            links=self.links_edit.toPlainText().strip() if hasattr(self, "links_edit") else "",
             structured_evidence=self._structured_evidence_text(),
         )
 
@@ -2387,6 +2452,12 @@ class ResuBuilderQtApp(QMainWindow):
         self.location_edit.setText(str(data.get("location", "") or ""))
         self.title_edit.setText(str(data.get("title", "") or ""))
         self.summary_edit.setPlainText(str(data.get("summary", "") or ""))
+        if hasattr(self, "education_edit"):
+            self.education_edit.setPlainText(str(data.get("studies", data.get("education", "")) or ""))
+        if hasattr(self, "languages_edit"):
+            self.languages_edit.setPlainText(str(data.get("languages", "") or ""))
+        if hasattr(self, "links_edit"):
+            self.links_edit.setPlainText(str(data.get("links", "") or ""))
         self.skills_edit.setPlainText(str(data.get("skills", "") or ""))
         self.projects_edit.setPlainText(str(data.get("projects", "") or ""))
         self.professions_edit.setPlainText(str(data.get("professions", "") or ""))
@@ -2814,6 +2885,23 @@ class ResuBuilderQtApp(QMainWindow):
             job_fit_analysis=self.job_fit_analysis,
         )
 
+    def _manual_edit_instructions_text(self) -> str:
+        if hasattr(self, "manual_edit_instructions_edit"):
+            self.manual_edit_instructions = self.manual_edit_instructions_edit.toPlainText().strip()
+        return self.manual_edit_instructions.strip()
+
+    def _manual_instruction_report(self, document_type: str, instructions: str) -> str:
+        return (
+            "# User AI Edit Instructions\n\n"
+            f"The user wants targeted edits to the selected {document_type}. Follow these instructions exactly, but do not invent employers, dates, degrees, metrics, tools, or achievements. Preserve truthful candidate evidence and keep the document ATS-friendly.\n\n"
+            "## Requested edits\n"
+            f"{instructions.strip()}\n\n"
+            "## Hard rules\n"
+            "- Apply the user's requested changes when they are compatible with the available evidence.\n"
+            "- If a requested emphasis is unsupported, keep it modest or omit it.\n"
+            "- Return only the revised document text.\n"
+        )
+
     def _quality_report_ready_text(self) -> str:
         if not hasattr(self, "quality_report_edit"):
             return ""
@@ -2823,7 +2911,7 @@ class ResuBuilderQtApp(QMainWindow):
         return text
 
     def _set_review_action_buttons_enabled(self, enabled: bool) -> None:
-        for name in ("run_quality_button", "run_ai_review_button", "improve_quality_button"):
+        for name in ("run_quality_button", "run_ai_review_button", "improve_quality_button", "apply_custom_edit_button"):
             button = getattr(self, name, None)
             if button is not None:
                 button.setEnabled(enabled)
@@ -2903,6 +2991,65 @@ class ResuBuilderQtApp(QMainWindow):
         self.ai_quality_review_edit.setPlainText("AI quality review failed. Check data/logs/qt_gui.log for details.")
         QMessageBox.critical(self, "AI review failed", error)
 
+    def _start_custom_ai_edit(self) -> None:
+        document_type, text = self._selected_review_document_text()
+        if not text.strip():
+            QMessageBox.warning(self, "Cannot edit document", f"Generate a {document_type} first.")
+            return
+        ok, message = self._validate_profile()
+        if not ok:
+            QMessageBox.warning(self, "Cannot edit document", message)
+            return
+        ok, message = self._validate_job_details()
+        if not ok:
+            QMessageBox.warning(self, "Cannot edit document", message)
+            return
+        instructions = self._manual_edit_instructions_text()
+        if not instructions:
+            QMessageBox.warning(self, "No edit instructions", "Write specific instructions before applying an AI edit.")
+            return
+        if self._ai_review_running or self._improvement_running:
+            QMessageBox.information(self, "Review task running", "Wait for the current review or improvement task to finish.")
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "Apply AI edit instructions",
+            f"Apply the instructions to the selected {document_type}? This replaces the current generated {document_type} text. Save your workspace first if you want to preserve the current version.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        self._improvement_running = True
+        self._improvement_job_id += 1
+        self._improvement_reason = "AI edit instructions"
+        job_id = self._improvement_job_id
+        request = self._build_review_generation_request(document_type)
+        if not self._ensure_ai_ready(request.ai_settings, "AI edit instructions"):
+            self._improvement_running = False
+            return
+        heuristic_report = self._manual_instruction_report(document_type, instructions)
+        ai_review = self.ai_quality_review_edit.toPlainText().strip() if hasattr(self, "ai_quality_review_edit") else self.ai_quality_review
+        if ai_review.startswith("No AI review") or ai_review.startswith("AI review cleared") or ai_review.startswith("Improvement complete"):
+            ai_review = ""
+
+        self._set_review_action_buttons_enabled(False)
+        self.review_status_label.setText(f"Applying AI edit instructions to {document_type} with {request.ai_settings.provider} / {request.ai_settings.ollama_model}...")
+        self.ai_review_status_label.setText("AI edit running. Do not close the app.")
+        self.output_edit.setPlainText(f"Applying AI edit instructions to {document_type}. The revised text will replace this screen when finished.")
+        self.document_type_combo.setCurrentText(document_type)
+        self.show_page("Generate")
+        self._write_qt_log(f"Manual AI edit started: job_id={job_id}, type={document_type}")
+
+        thread = threading.Thread(
+            target=self._run_improvement_worker,
+            args=(job_id, request, text, heuristic_report, ai_review),
+            daemon=True,
+        )
+        thread.start()
+
     def _start_quality_improvement(self) -> None:
         document_type, text = self._selected_review_document_text()
         if not text.strip():
@@ -2936,9 +3083,11 @@ class ResuBuilderQtApp(QMainWindow):
 
         self._improvement_running = True
         self._improvement_job_id += 1
+        self._improvement_reason = "quality fixes"
         job_id = self._improvement_job_id
         request = self._build_review_generation_request(document_type)
         if not self._ensure_ai_ready(request.ai_settings, "quality improvement"):
+            self._improvement_running = False
             return
         ai_review = self.ai_quality_review_edit.toPlainText().strip() if hasattr(self, "ai_quality_review_edit") else self.ai_quality_review
         if ai_review.startswith("No AI review") or ai_review.startswith("AI review cleared"):
@@ -2995,12 +3144,13 @@ class ResuBuilderQtApp(QMainWindow):
         self.output_edit.setPlainText(text)
         self.document_type_combo.setCurrentText(document_type)
         self.review_document_combo.setCurrentText(document_type)
-        self.status_label.setText(f"{document_type} improved with quality fixes. Run Quality Check again before exporting.")
-        self.review_status_label.setText("Improvement complete. Run Quality Check again before export.")
-        self.ai_review_status_label.setText("Improvement complete. Previous AI review may no longer match the improved text.")
+        reason = getattr(self, "_improvement_reason", "quality fixes")
+        self.status_label.setText(f"{document_type} updated with {reason}. Run Quality Check again before exporting.")
+        self.review_status_label.setText(f"Update complete using {reason}. Run Quality Check again before export.")
+        self.ai_review_status_label.setText("Document updated. Previous AI review may no longer match the revised text.")
         self.ai_quality_review = ""
-        self.ai_quality_review_edit.setPlainText("Improvement complete. Run AI Quality Review again if needed.")
-        self.quality_report_edit.setPlainText("Improvement complete. Run Quality Check again to score the updated document.")
+        self.ai_quality_review_edit.setPlainText("Document updated. Run AI Quality Review again if needed.")
+        self.quality_report_edit.setPlainText("Document updated. Run Quality Check again to score the revised document.")
         self.review_score_label.setText("Needs new quality check")
         self._update_workspace_status(f"{document_type} improved. Save the workspace to preserve the updated document.")
         self.show_page("Generate")
@@ -3142,6 +3292,7 @@ class ResuBuilderQtApp(QMainWindow):
             "generated_covering_letter": self.generated_covering_letter,
             "quality_report": self._quality_report_text(),
             "ai_quality_review": self.ai_quality_review,
+            "manual_edit_instructions": self._manual_edit_instructions_text(),
             "settings": {
                 "provider": self.app_settings.ai_provider,
                 "ollama_model": self.app_settings.ollama_model,
