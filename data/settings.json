@@ -2,7 +2,7 @@
   "schema_version": 1,
   "ui_theme": "Dark",
   "template_name": "ATS Friendly",
-  "pdf_template": "ATS Friendly",
+  "pdf_template": "Compact Tech CV",
   "pdf_page_size": "A4",
   "use_ai": true,
   "ai_provider": "Ollama Local",

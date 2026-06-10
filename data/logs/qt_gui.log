@@ -108,3 +108,33 @@
 [2026-06-10 17:58:45] Quality improvement finished: job_id=1, chars=4237
 [2026-06-10 18:00:37] Manual AI edit started: job_id=2, type=CV
 [2026-06-10 18:01:00] Quality improvement finished: job_id=2, chars=4253
+[2026-06-10 20:50:13] Job fit analysis started: job_id=1, model=qwen3:14b
+[2026-06-10 20:50:30] Job fit analysis finished: job_id=1, chars=3279
+[2026-06-10 20:51:07] Generation started: job_id=1, type=CV, provider=Ollama Local, model=qwen3:14b
+[2026-06-10 20:51:24] Generation finished: job_id=1, chars=4392
+[2026-06-10 20:51:43] Generation started: job_id=2, type=Covering Letter, provider=Ollama Local, model=qwen3:14b
+[2026-06-10 20:51:53] Generation finished: job_id=2, chars=1800
+[2026-06-10 20:54:27] AI quality review started: job_id=1, type=CV
+[2026-06-10 20:54:42] AI quality review finished: job_id=1, chars=3127
+[2026-06-10 20:54:49] Quality improvement started: job_id=1, type=CV
+[2026-06-10 20:55:06] Quality improvement finished: job_id=1, chars=4109
+[2026-06-10 21:02:17] Generation started: job_id=3, type=CV, provider=Ollama Local, model=qwen3:14b
+[2026-06-10 21:02:39] Generation finished: job_id=3, chars=4452
+[2026-06-10 21:06:08] AI quality review started: job_id=2, type=CV
+[2026-06-10 21:06:23] AI quality review finished: job_id=2, chars=3030
+[2026-06-10 21:09:43] AI quality review started: job_id=1, type=CV
+[2026-06-10 21:09:59] AI quality review finished: job_id=1, chars=3467
+[2026-06-10 21:14:30] Generation started: job_id=1, type=CV, provider=Ollama Local, model=qwen3:14b
+[2026-06-10 21:14:50] Generation finished: job_id=1, chars=5064
+[2026-06-10 21:17:35] Manual AI edit started: job_id=1, type=CV
+[2026-06-10 21:17:55] Quality improvement finished: job_id=1, chars=5064
+[2026-06-10 21:19:50] Generation started: job_id=2, type=CV, provider=Ollama Local, model=qwen3:14b
+[2026-06-10 21:20:12] Generation finished: job_id=2, chars=5130
+[2026-06-10 21:20:54] Manual AI edit started: job_id=2, type=CV
+[2026-06-10 21:21:16] Quality improvement finished: job_id=2, chars=5130
+[2026-06-10 21:23:48] Job fit analysis started: job_id=1, model=qwen3:14b
+[2026-06-10 21:24:03] Job fit analysis finished: job_id=1, chars=3205
+[2026-06-10 22:02:18] Manual AI edit started: job_id=3, type=Covering Letter
+[2026-06-10 22:02:35] Quality improvement finished: job_id=3, chars=2952
+[2026-06-10 22:05:53] Manual AI edit started: job_id=4, type=Covering Letter
+[2026-06-10 22:06:05] Quality improvement finished: job_id=4, chars=2808

@@ -5,6 +5,8 @@ import re
 import sys
 import threading
 import traceback
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -47,8 +49,15 @@ from .models import AISettings, CandidateProfile, GenerationRequest
 from .application_package_exporter import export_application_package
 from .pdf_exporter import export_markdown_to_pdf
 from .pdf_templates import get_pdf_template_names
+from .document_layout import (
+    extract_markdown_sections,
+    insert_page_break_after_section,
+    remove_page_break_markers,
+    reorder_markdown_sections,
+)
 from .quality_checker import analyze_document, format_quality_report
 from .settings_manager import AppSettings, load_app_settings, save_app_settings
+from .app_paths import applications_dir, data_dir, exports_dir, logs_dir, profile_path
 from .storage import load_json, save_json
 from .templates import get_template_names
 from .workspace_manager import (
@@ -63,7 +72,7 @@ from .qt_theme import DARK_BLUE_QSS, THEME_OPTIONS, theme_qss
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 ASSET_DIR = Path(__file__).resolve().parent / "assets"
 LOGO_PATH = ASSET_DIR / "resubuilder_logo.svg"
-PROFILE_PATH = Path("data") / "candidate_profile.json"
+PROFILE_PATH = profile_path()
 
 OLLAMA_MODEL_OPTIONS = [
     "qwen3:8b",
@@ -79,6 +88,8 @@ OPENAI_MODEL_OPTIONS = [
     "gpt-4o-mini",
     "gpt-4o",
 ]
+
+OUTPUT_LANGUAGE_OPTIONS = ["English", "German"]
 
 
 class QMessageBox:
@@ -344,15 +355,17 @@ class Card(QFrame):
             self.layout.addWidget(subtitle_label)
 
     def _add_outer_shadow(self) -> None:
-        """Add a soft outside shadow so cards feel slightly raised.
+        """Add a directional shadow on the lower-right side of cards.
 
-        Qt stylesheets cannot render real box shadows. QGraphicsDropShadowEffect gives
-        the modern 3D themes a floating card effect without touching backend logic.
+        The previous 3D shadow was centered enough to create a halo on the
+        top and left edges. That made the cards look heavy. A positive X/Y
+        offset keeps the visible depth mostly on the right and bottom, which
+        gives the cleaner floating effect requested for the release UI.
         """
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(30)
-        shadow.setOffset(0, 10)
-        shadow.setColor(QColor(0, 0, 0, 85))
+        shadow.setBlurRadius(22)
+        shadow.setOffset(12, 14)
+        shadow.setColor(QColor(0, 0, 0, 92))
         self.setGraphicsEffect(shadow)
 
 
@@ -374,6 +387,7 @@ class ResuBuilderQtApp(QMainWindow):
         self.generated_covering_letter = ""
         self.job_fit_analysis = ""
         self.ai_quality_review = ""
+        self.manual_edit_instructions = ""
         self.evidence_entries: list[dict[str, str]] = []
         self._legacy_structured_evidence_text = ""
         self.current_workspace_path: Path | None = None
@@ -385,6 +399,7 @@ class ResuBuilderQtApp(QMainWindow):
         self._ai_review_job_id = 0
         self._improvement_running = False
         self._improvement_job_id = 0
+        self._improvement_reason = "quality fixes"
         self.generation_signals = GenerationSignals()
         self.generation_signals.finished.connect(self._generation_finished)
         self.generation_signals.failed.connect(self._generation_failed)
@@ -440,11 +455,11 @@ class ResuBuilderQtApp(QMainWindow):
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
     def _add_frame_shadow(self, frame: QFrame) -> None:
-        """Apply the same soft floating shadow to non-Card frames."""
+        """Apply a lower-right directional shadow to non-Card frames."""
         shadow = QGraphicsDropShadowEffect(frame)
-        shadow.setBlurRadius(28)
-        shadow.setOffset(0, 9)
-        shadow.setColor(QColor(0, 0, 0, 78))
+        shadow.setBlurRadius(22)
+        shadow.setOffset(12, 14)
+        shadow.setColor(QColor(0, 0, 0, 88))
         frame.setGraphicsEffect(shadow)
 
     def _logo_pixmap(self, size: int) -> QPixmap | None:
@@ -520,10 +535,9 @@ class ResuBuilderQtApp(QMainWindow):
         self.file_menu.addAction(self._menu_action("Save Application Workspace", self._save_workspace))
         self.file_menu.addAction(self._menu_action("Save Application Workspace As...", self._save_workspace_as))
         self.file_menu.addSeparator()
+        self.file_menu.addAction(self._menu_action("Load Profile...", self._load_profile))
         self.file_menu.addAction(self._menu_action("Save Profile", self._save_current_profile))
-        self.file_menu.addAction(self._menu_action("Load Saved Profile", self._load_saved_profile))
-        self.file_menu.addAction(self._menu_action("Import Profile JSON...", self._import_profile_json))
-        self.file_menu.addAction(self._menu_action("Export Profile JSON...", self._export_profile_json))
+        self.file_menu.addAction(self._menu_action("Save Profile As...", self._save_profile_as))
         self.file_menu.addSeparator()
         self.file_menu.addAction(self._menu_action("Export Application Package", self._export_application_package))
         self.file_menu.addAction(self._menu_action("Open Export Folder", self._open_export_dir))
@@ -572,14 +586,16 @@ class ResuBuilderQtApp(QMainWindow):
         self.settings_provider_combo.setCurrentText(getattr(self.app_settings, "ai_provider", "Ollama Local"))
         self.settings_generation_mode_combo.setCurrentText(getattr(self.app_settings, "generation_mode", "Balanced"))
         self.settings_ollama_url_edit.setText(getattr(self.app_settings, "ollama_base_url", "http://localhost:11434"))
-        self.settings_ollama_model_combo.setCurrentText(getattr(self.app_settings, "ollama_model", "qwen3:14b"))
+        self.settings_ollama_model_combo.setCurrentText(getattr(self.app_settings, "ollama_model", "qwen3:8b"))
         self.settings_openai_model_combo.setCurrentText(getattr(self.app_settings, "openai_model", "gpt-4.1-mini"))
         self.settings_timeout_spin.setValue(int(getattr(self.app_settings, "timeout_seconds", 120)))
         self.settings_template_combo.setCurrentText(getattr(self.app_settings, "template_name", "ATS Friendly"))
         self.settings_pdf_template_combo.setCurrentText(getattr(self.app_settings, "pdf_template", "ATS Friendly"))
         self.settings_page_size_combo.setCurrentText(getattr(self.app_settings, "pdf_page_size", "A4"))
-        self.settings_workspace_dir_edit.setText(getattr(self.app_settings, "last_workspace_dir", "") or str(Path("data/applications")))
-        self.settings_export_dir_edit.setText(getattr(self.app_settings, "last_export_dir", "") or str(Path("exports")))
+        if hasattr(self, "settings_output_language_combo"):
+            self.settings_output_language_combo.setCurrentText(getattr(self.app_settings, "output_language", "English"))
+        self.settings_workspace_dir_edit.setText(getattr(self.app_settings, "last_workspace_dir", "") or str(applications_dir()))
+        self.settings_export_dir_edit.setText(getattr(self.app_settings, "last_export_dir", "") or str(exports_dir()))
         self.settings_theme_combo.setCurrentText(self._normalized_theme(getattr(self.app_settings, "ui_theme", "Dark blue")))
 
     def _open_settings_window(self) -> None:
@@ -628,7 +644,7 @@ class ResuBuilderQtApp(QMainWindow):
         ollama_url_edit = QLineEdit(getattr(self.app_settings, "ollama_base_url", "http://localhost:11434"))
         ollama_model_combo = QComboBox()
         ollama_model_combo.addItems(OLLAMA_MODEL_OPTIONS)
-        current_ollama_model = str(getattr(self.app_settings, "ollama_model", "qwen3:14b") or "qwen3:14b")
+        current_ollama_model = str(getattr(self.app_settings, "ollama_model", "qwen3:8b") or "qwen3:8b")
         if current_ollama_model not in OLLAMA_MODEL_OPTIONS:
             ollama_model_combo.addItem(current_ollama_model)
         ollama_model_combo.setCurrentText(current_ollama_model)
@@ -652,6 +668,16 @@ class ResuBuilderQtApp(QMainWindow):
         self._add_labeled_field(ai_grid, 2, 0, "OpenAI model", openai_model_combo)
         self._add_labeled_field(ai_grid, 2, 1, "AI timeout", timeout_spin)
         ai_card.layout.addLayout(ai_grid)
+        ai_actions = QHBoxLayout()
+        ai_actions.setSpacing(12)
+        check_ollama_button = QPushButton("Check Ollama Setup")
+        check_ollama_button.clicked.connect(lambda: self._check_ollama_dialog_values(base_url_edit=ollama_url_edit, model_combo=ollama_model_combo))
+        ollama_help_button = QPushButton("Ollama Help")
+        ollama_help_button.clicked.connect(self._show_ollama_setup_help)
+        ai_actions.addWidget(check_ollama_button)
+        ai_actions.addWidget(ollama_help_button)
+        ai_actions.addStretch(1)
+        ai_card.layout.addLayout(ai_actions)
         content_layout.addWidget(ai_card)
 
         doc_card = Card("Document defaults", "Default generation and PDF settings.")
@@ -669,11 +695,15 @@ class ResuBuilderQtApp(QMainWindow):
         page_size_combo = QComboBox()
         page_size_combo.addItems(["A4", "Letter"])
         page_size_combo.setCurrentText(getattr(self.app_settings, "pdf_page_size", "A4"))
-        for widget in (template_combo, pdf_template_combo, page_size_combo):
+        language_combo = QComboBox()
+        language_combo.addItems(OUTPUT_LANGUAGE_OPTIONS)
+        language_combo.setCurrentText(getattr(self.app_settings, "output_language", "English"))
+        for widget in (template_combo, pdf_template_combo, page_size_combo, language_combo):
             self._prepare_form_control(widget, min_width=340)
         self._add_labeled_field(doc_grid, 0, 0, "Generation template", template_combo)
-        self._add_labeled_field(doc_grid, 0, 1, "PDF template", pdf_template_combo)
-        self._add_labeled_field(doc_grid, 1, 0, "PDF page size", page_size_combo)
+        self._add_labeled_field(doc_grid, 0, 1, "Output language", language_combo)
+        self._add_labeled_field(doc_grid, 1, 0, "PDF template", pdf_template_combo)
+        self._add_labeled_field(doc_grid, 1, 1, "PDF page size", page_size_combo)
         doc_card.layout.addLayout(doc_grid)
         content_layout.addWidget(doc_card)
 
@@ -681,8 +711,8 @@ class ResuBuilderQtApp(QMainWindow):
         folder_grid = QGridLayout()
         folder_grid.setHorizontalSpacing(12)
         folder_grid.setVerticalSpacing(14)
-        workspace_dir_edit = QLineEdit(getattr(self.app_settings, "last_workspace_dir", "") or str(Path("data/applications")))
-        export_dir_edit = QLineEdit(getattr(self.app_settings, "last_export_dir", "") or str(Path("exports")))
+        workspace_dir_edit = QLineEdit(getattr(self.app_settings, "last_workspace_dir", "") or str(applications_dir()))
+        export_dir_edit = QLineEdit(getattr(self.app_settings, "last_export_dir", "") or str(exports_dir()))
         self._prepare_form_control(workspace_dir_edit, min_width=520)
         self._prepare_form_control(export_dir_edit, min_width=520)
         self._add_labeled_field(folder_grid, 0, 0, "Workspace folder", workspace_dir_edit)
@@ -717,10 +747,11 @@ class ResuBuilderQtApp(QMainWindow):
             self.app_settings.ai_provider = provider_combo.currentText()
             self.app_settings.generation_mode = generation_mode_combo.currentText()
             self.app_settings.ollama_base_url = ollama_url_edit.text().strip() or "http://localhost:11434"
-            self.app_settings.ollama_model = ollama_model_combo.currentText().strip() or "qwen3:14b"
+            self.app_settings.ollama_model = ollama_model_combo.currentText().strip() or "qwen3:8b"
             self.app_settings.openai_model = openai_model_combo.currentText().strip() or "gpt-4.1-mini"
             self.app_settings.timeout_seconds = int(timeout_spin.value())
             self.app_settings.template_name = template_combo.currentText()
+            self.app_settings.output_language = language_combo.currentText()
             self.app_settings.pdf_template = pdf_template_combo.currentText()
             self.app_settings.pdf_page_size = page_size_combo.currentText()
             self.app_settings.last_workspace_dir = workspace_dir_edit.text().strip()
@@ -776,6 +807,7 @@ class ResuBuilderQtApp(QMainWindow):
             "Settings menu:\n"
             "- Open Settings opens a standalone settings window.\n"
             "- UI Theme changes the interface quickly.\n"
+            "- Output language controls whether generated documents are written in English or German.\n"
             "- Save App Settings writes current settings to data/settings.json.\n"
             "- Restore App Settings resets defaults.\n\n"
             "Help menu:\n"
@@ -873,23 +905,36 @@ class ResuBuilderQtApp(QMainWindow):
         hero_layout.setContentsMargins(28, 28, 28, 28)
         hero_layout.setSpacing(18)
 
+        hero_header = QHBoxLayout()
+        hero_header.setSpacing(22)
+        hero_header.setAlignment(Qt.AlignmentFlag.AlignTop)
+
         logo = self._logo_label(78)
+        logo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+        hero_copy = QVBoxLayout()
+        hero_copy.setSpacing(10)
         hero_title = QLabel("Build stronger applications without losing truth control.")
         hero_title.setObjectName("PageTitle")
+        hero_title.setWordWrap(True)
         hero_text = QLabel(
             "ResuBuilder helps you structure your profile, match it to a role, generate tailored documents, review quality, and export a complete application package."
         )
         hero_text.setObjectName("PageSubtitle")
         hero_text.setWordWrap(True)
+        hero_copy.addWidget(hero_title)
+        hero_copy.addWidget(hero_text)
+        hero_copy.addStretch(1)
+
+        hero_header.addWidget(logo, 0, Qt.AlignmentFlag.AlignTop)
+        hero_header.addLayout(hero_copy, 1)
 
         start_button = QPushButton("Start with Profile")
         start_button.setObjectName("PrimaryButton")
         start_button.setCursor(Qt.CursorShape.PointingHandCursor)
         start_button.clicked.connect(lambda: self.show_page("Profile"))
 
-        hero_layout.addWidget(logo)
-        hero_layout.addWidget(hero_title)
-        hero_layout.addWidget(hero_text)
+        hero_layout.addLayout(hero_header)
         hero_layout.addWidget(start_button, alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(hero)
 
@@ -900,6 +945,26 @@ class ResuBuilderQtApp(QMainWindow):
         card_row.addWidget(Card("3. Job", "Break the job post into company, role, responsibilities, and requirements."), 0, 2)
         card_row.addWidget(Card("4. Generate", "Use Ollama or OpenAI through the existing AI service layer."), 1, 0)
         layout.addLayout(card_row)
+
+        setup_card = Card(
+            "Local AI setup",
+            "New computer? Check that Ollama is running and that the selected model is installed before generating documents.",
+        )
+        setup_row = QHBoxLayout()
+        setup_row.setSpacing(12)
+        check_button = QPushButton("Check Ollama")
+        check_button.setObjectName("PrimaryButton")
+        check_button.clicked.connect(lambda: self._check_ollama_ready(show_success=True))
+        help_button = QPushButton("Show Setup Help")
+        help_button.clicked.connect(self._show_ollama_setup_help)
+        download_button = QPushButton("Open Ollama Download")
+        download_button.clicked.connect(self._open_ollama_download)
+        setup_row.addWidget(check_button)
+        setup_row.addWidget(help_button)
+        setup_row.addWidget(download_button)
+        setup_row.addStretch(1)
+        setup_card.layout.addLayout(setup_row)
+        layout.addWidget(setup_card)
         layout.addStretch(1)
         return page
 
@@ -1013,7 +1078,32 @@ class ResuBuilderQtApp(QMainWindow):
         identity.layout.addWidget(self.summary_edit)
         content_layout.addWidget(identity)
 
-        evidence = Card("Evidence snapshot", "This is not the final evidence builder. It is enough to prove the Qt generation flow.")
+        background = Card(
+            "Education, languages, and links",
+            "Add reusable profile facts once so CVs and covering letters do not miss basic sections.",
+        )
+        self.education_edit = QTextEdit()
+        self.education_edit.setMinimumHeight(110)
+        self.education_edit.setPlaceholderText(
+            "Example:\nM.Sc. Neural Engineering, HTW Saar, 2022-2025\nB.Sc. Biomedical Engineering, HTW Saar, 2018-2022"
+        )
+        self.languages_edit = QTextEdit()
+        self.languages_edit.setMinimumHeight(80)
+        self.languages_edit.setPlaceholderText("Example: English - Professional, German - B2, Arabic - Native")
+        self.links_edit = QTextEdit()
+        self.links_edit.setMinimumHeight(80)
+        self.links_edit.setPlaceholderText(
+            "Example:\nLinkedIn: https://www.linkedin.com/in/your-name\nGitHub: https://github.com/your-name\nPortfolio: https://your-site.com"
+        )
+        background.layout.addWidget(QLabel("Education"))
+        background.layout.addWidget(self.education_edit)
+        background.layout.addWidget(QLabel("Languages"))
+        background.layout.addWidget(self.languages_edit)
+        background.layout.addWidget(QLabel("Links"))
+        background.layout.addWidget(self.links_edit)
+        content_layout.addWidget(background)
+
+        evidence = Card("Evidence snapshot", "Use this for quick notes. Use the Evidence page for stronger structured proof.")
         self.skills_edit = QTextEdit()
         self.skills_edit.setMinimumHeight(90)
         self.projects_edit = QTextEdit()
@@ -1033,26 +1123,22 @@ class ResuBuilderQtApp(QMainWindow):
         validate_button.setObjectName("PrimaryButton")
         validate_button.clicked.connect(self._validate_profile_with_message)
 
+        load_profile_button = QPushButton("Load Profile...")
+        load_profile_button.clicked.connect(self._load_profile)
+
         save_profile_button = QPushButton("Save Profile")
         save_profile_button.clicked.connect(self._save_current_profile)
 
-        load_profile_button = QPushButton("Load Saved Profile")
-        load_profile_button.clicked.connect(self._load_saved_profile)
-
-        import_profile_button = QPushButton("Import Profile JSON")
-        import_profile_button.clicked.connect(self._import_profile_json)
-
-        export_profile_button = QPushButton("Export Profile JSON")
-        export_profile_button.clicked.connect(self._export_profile_json)
+        save_profile_as_button = QPushButton("Save Profile As...")
+        save_profile_as_button.clicked.connect(self._save_profile_as)
 
         continue_button = QPushButton("Continue to Evidence")
         continue_button.clicked.connect(lambda: self.show_page("Evidence"))
 
         action_row.addWidget(validate_button)
-        action_row.addWidget(save_profile_button)
         action_row.addWidget(load_profile_button)
-        action_row.addWidget(import_profile_button)
-        action_row.addWidget(export_profile_button)
+        action_row.addWidget(save_profile_button)
+        action_row.addWidget(save_profile_as_button)
         action_row.addWidget(continue_button)
         action_row.addStretch(1)
         content_layout.addLayout(action_row)
@@ -1308,6 +1394,11 @@ class ResuBuilderQtApp(QMainWindow):
             if index >= 0:
                 self.template_combo.setCurrentIndex(index)
 
+        self.output_language_combo = QComboBox()
+        self.output_language_combo.addItems(OUTPUT_LANGUAGE_OPTIONS)
+        self.output_language_combo.setCurrentText(getattr(self.app_settings, "output_language", "English"))
+        self.output_language_combo.setToolTip("Choose the language used for generated CVs and covering letters. German output is translated by the selected AI provider.")
+
         self.generate_button = QPushButton("Generate Document")
         self.generate_button.setObjectName("PrimaryButton")
         self.generate_button.setMinimumHeight(48)
@@ -1316,9 +1407,11 @@ class ResuBuilderQtApp(QMainWindow):
 
         self._prepare_form_control(self.document_type_combo, min_width=240)
         self._prepare_form_control(self.template_combo, min_width=280)
+        self._prepare_form_control(self.output_language_combo, min_width=240)
         self._add_labeled_field(controls_grid, 0, 0, "Document", self.document_type_combo)
         self._add_labeled_field(controls_grid, 0, 1, "Template", self.template_combo)
-        controls_grid.addWidget(self.generate_button, 0, 2, alignment=Qt.AlignmentFlag.AlignBottom)
+        self._add_labeled_field(controls_grid, 1, 0, "Output language", self.output_language_combo)
+        controls_grid.addWidget(self.generate_button, 1, 2, alignment=Qt.AlignmentFlag.AlignBottom)
         controls.layout.addLayout(controls_grid)
         content_layout.addWidget(controls)
 
@@ -1377,6 +1470,7 @@ class ResuBuilderQtApp(QMainWindow):
 
         self.review_document_combo = QComboBox()
         self.review_document_combo.addItems(["CV", "Covering Letter"])
+        self.review_document_combo.currentTextChanged.connect(lambda _value: self._refresh_review_page_break_sections())
         self._prepare_form_control(self.review_document_combo, min_width=220)
 
         self.run_quality_button = QPushButton("Run Quality Check")
@@ -1406,6 +1500,33 @@ class ResuBuilderQtApp(QMainWindow):
         review_grid.addWidget(show_button, 1, 3)
         controls.layout.addLayout(review_grid)
         content_layout.addWidget(controls)
+
+        edit_card = Card(
+            "AI edit instructions",
+            "Optional. After generation, tell the AI exactly how to revise the selected CV or covering letter. Use this for focused edits such as reordering skills, emphasizing specific evidence, tightening tone, or removing weak sections.",
+        )
+        edit_card.layout.addWidget(QLabel("Instructions for selected document"))
+        self.manual_edit_instructions_edit = QPlainTextEdit()
+        self.manual_edit_instructions_edit.setMinimumHeight(130)
+        self.manual_edit_instructions_edit.setPlaceholderText(
+            "Examples:\n"
+            "- Move Python and PyTorch to the start of the skills section.\n"
+            "- Focus more on computer vision, model validation, and research engineering.\n"
+            "- Make the covering letter more concise and less generic.\n"
+            "- Remove unsupported claims and keep the tone direct."
+        )
+        edit_card.layout.addWidget(self.manual_edit_instructions_edit)
+        edit_actions = QHBoxLayout()
+        edit_actions.addStretch(1)
+        self.apply_custom_edit_button = QPushButton("Apply AI Edit Instructions")
+        self.apply_custom_edit_button.setObjectName("PrimaryButton")
+        self.apply_custom_edit_button.setMinimumHeight(46)
+        self.apply_custom_edit_button.setMinimumWidth(230)
+        self.apply_custom_edit_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.apply_custom_edit_button.clicked.connect(self._start_custom_ai_edit)
+        edit_actions.addWidget(self.apply_custom_edit_button)
+        edit_card.layout.addLayout(edit_actions)
+        content_layout.addWidget(edit_card)
 
         score_row = QGridLayout()
         score_row.setSpacing(18)
@@ -1489,6 +1610,7 @@ class ResuBuilderQtApp(QMainWindow):
 
         self.export_document_combo = QComboBox()
         self.export_document_combo.addItems(["CV", "Covering Letter"])
+        self.export_document_combo.currentTextChanged.connect(lambda _value: self._refresh_section_order_list())
 
         self.export_pdf_template_combo = QComboBox()
         self.export_pdf_template_combo.addItems(get_pdf_template_names())
@@ -1509,7 +1631,7 @@ class ResuBuilderQtApp(QMainWindow):
         ):
             self._prepare_form_control(export_widget, min_width=420)
 
-        default_export_dir = getattr(self.app_settings, "last_export_dir", "") or str(Path("exports"))
+        default_export_dir = getattr(self.app_settings, "last_export_dir", "") or str(exports_dir())
         self.export_dir_edit = QLineEdit(default_export_dir)
         self._prepare_form_control(self.export_dir_edit, min_width=420)
         browse_button = QPushButton("Browse")
@@ -1537,6 +1659,93 @@ class ResuBuilderQtApp(QMainWindow):
 
         settings_card.layout.addLayout(settings_grid)
         content_layout.addWidget(settings_card)
+
+        layout_card = Card(
+            "Template preview and section order",
+            "Preview the selected document and reorder top-level sections before export. PDF export keeps project-style subsections together where possible.",
+        )
+        layout_card.setMinimumHeight(360)
+        layout_grid = QGridLayout()
+        layout_grid.setHorizontalSpacing(18)
+        layout_grid.setVerticalSpacing(14)
+        layout_grid.setColumnStretch(0, 2)
+        layout_grid.setColumnStretch(1, 1)
+
+        self.section_order_list = QListWidget()
+        self.section_order_list.setMinimumHeight(220)
+        layout_grid.addWidget(self.section_order_list, 0, 0, 4, 1)
+
+        refresh_sections_button = QPushButton("Refresh Sections")
+        refresh_sections_button.clicked.connect(self._refresh_section_order_list)
+        move_up_button = QPushButton("Move Up")
+        move_up_button.clicked.connect(lambda: self._move_section_order(-1))
+        move_down_button = QPushButton("Move Down")
+        move_down_button.clicked.connect(lambda: self._move_section_order(1))
+        apply_order_button = QPushButton("Apply Order to Document")
+        apply_order_button.setObjectName("PrimaryButton")
+        apply_order_button.clicked.connect(self._apply_section_order_to_document)
+        preview_button = QPushButton("Preview Ordered Document")
+        preview_button.clicked.connect(self._preview_ordered_document)
+
+        for button in (refresh_sections_button, move_up_button, move_down_button, apply_order_button, preview_button):
+            button.setMinimumHeight(42)
+
+        layout_grid.addWidget(refresh_sections_button, 0, 1)
+        layout_grid.addWidget(move_up_button, 1, 1)
+        layout_grid.addWidget(move_down_button, 2, 1)
+        layout_grid.addWidget(apply_order_button, 3, 1)
+        layout_grid.addWidget(preview_button, 4, 1)
+
+        layout_tip = QLabel(
+            "Tip: keep project entries under ### headings. The PDF exporter tries to keep each project block together so descriptions are less likely to split across pages."
+        )
+        layout_tip.setObjectName("CardText")
+        layout_tip.setWordWrap(True)
+        layout_grid.addWidget(layout_tip, 4, 0)
+
+        layout_card.layout.addLayout(layout_grid)
+        content_layout.addWidget(layout_card)
+        self._refresh_section_order_list()
+
+        page_break_card = Card(
+            "Manual PDF page breaks",
+            "Optional. Add a page split after a CV section so the next section starts on a new PDF page. Keep this with export layout controls, not content review.",
+        )
+        break_grid = QGridLayout()
+        break_grid.setHorizontalSpacing(12)
+        break_grid.setVerticalSpacing(12)
+        break_grid.setColumnStretch(0, 1)
+        break_grid.setColumnStretch(1, 0)
+        break_grid.setColumnStretch(2, 0)
+        break_grid.setColumnStretch(3, 0)
+
+        self.page_break_section_combo = QComboBox()
+        self._prepare_form_control(self.page_break_section_combo, min_width=420)
+
+        self.refresh_page_break_sections_button = QPushButton("Refresh Sections")
+        self.refresh_page_break_sections_button.clicked.connect(self._refresh_review_page_break_sections)
+        self.insert_page_break_button = QPushButton("Add Page Split After Section")
+        self.insert_page_break_button.setObjectName("PrimaryButton")
+        self.insert_page_break_button.clicked.connect(self._insert_page_break_after_selected_section)
+        self.remove_page_breaks_button = QPushButton("Remove Page Splits")
+        self.remove_page_breaks_button.clicked.connect(self._remove_manual_page_breaks)
+
+        for button in (self.refresh_page_break_sections_button, self.insert_page_break_button, self.remove_page_breaks_button):
+            button.setMinimumHeight(44)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        break_grid.addWidget(QLabel("Split after CV section"), 0, 0)
+        break_grid.addWidget(self.refresh_page_break_sections_button, 0, 1)
+        break_grid.addWidget(self.insert_page_break_button, 0, 2)
+        break_grid.addWidget(self.remove_page_breaks_button, 0, 3)
+        break_grid.addWidget(self.page_break_section_combo, 1, 0, 1, 4)
+        page_break_note = QLabel("Example: choose Education, then Add Page Split After Section. The next section starts on a new page during PDF export.")
+        page_break_note.setObjectName("CardText")
+        page_break_note.setWordWrap(True)
+        page_break_card.layout.addLayout(break_grid)
+        page_break_card.layout.addWidget(page_break_note)
+        content_layout.addWidget(page_break_card)
+        self._refresh_review_page_break_sections()
 
         actions_card = Card("Export actions", "Export one document for quick testing, or export the full application package when both documents are ready.")
         actions_card.setMinimumHeight(160)
@@ -1633,7 +1842,7 @@ class ResuBuilderQtApp(QMainWindow):
 
         self.settings_ollama_model_combo = QComboBox()
         self.settings_ollama_model_combo.addItems(OLLAMA_MODEL_OPTIONS)
-        current_ollama_model = str(getattr(self.app_settings, "ollama_model", "qwen3:14b") or "qwen3:14b")
+        current_ollama_model = str(getattr(self.app_settings, "ollama_model", "qwen3:8b") or "qwen3:8b")
         if current_ollama_model not in OLLAMA_MODEL_OPTIONS:
             self.settings_ollama_model_combo.addItem(current_ollama_model)
         self.settings_ollama_model_combo.setCurrentText(current_ollama_model)
@@ -1668,6 +1877,16 @@ class ResuBuilderQtApp(QMainWindow):
         self._add_labeled_field(ai_grid, 2, 0, "OpenAI model", self.settings_openai_model_combo)
         self._add_labeled_field(ai_grid, 2, 1, "AI timeout", self.settings_timeout_spin)
         ai_card.layout.addLayout(ai_grid)
+        ai_actions = QHBoxLayout()
+        ai_actions.setSpacing(12)
+        check_ollama_button = QPushButton("Check Ollama Setup")
+        check_ollama_button.clicked.connect(lambda: self._check_ollama_from_settings(show_success=True))
+        ollama_help_button = QPushButton("Ollama Help")
+        ollama_help_button.clicked.connect(self._show_ollama_setup_help)
+        ai_actions.addWidget(check_ollama_button)
+        ai_actions.addWidget(ollama_help_button)
+        ai_actions.addStretch(1)
+        ai_card.layout.addLayout(ai_actions)
         content_layout.addWidget(ai_card)
 
         document_card = Card("Document defaults", "Set the default generation template and export format used by the Generate and Export pages.")
@@ -1689,12 +1908,17 @@ class ResuBuilderQtApp(QMainWindow):
         self.settings_page_size_combo.addItems(["A4", "Letter"])
         self.settings_page_size_combo.setCurrentText(getattr(self.app_settings, "pdf_page_size", "A4"))
 
-        for widget in (self.settings_template_combo, self.settings_pdf_template_combo, self.settings_page_size_combo):
+        self.settings_output_language_combo = QComboBox()
+        self.settings_output_language_combo.addItems(OUTPUT_LANGUAGE_OPTIONS)
+        self.settings_output_language_combo.setCurrentText(getattr(self.app_settings, "output_language", "English"))
+
+        for widget in (self.settings_template_combo, self.settings_output_language_combo, self.settings_pdf_template_combo, self.settings_page_size_combo):
             self._prepare_form_control(widget, min_width=360)
 
         self._add_labeled_field(document_grid, 0, 0, "Generation template", self.settings_template_combo)
-        self._add_labeled_field(document_grid, 0, 1, "PDF template", self.settings_pdf_template_combo)
-        self._add_labeled_field(document_grid, 1, 0, "PDF page size", self.settings_page_size_combo)
+        self._add_labeled_field(document_grid, 0, 1, "Output language", self.settings_output_language_combo)
+        self._add_labeled_field(document_grid, 1, 0, "PDF template", self.settings_pdf_template_combo)
+        self._add_labeled_field(document_grid, 1, 1, "PDF page size", self.settings_page_size_combo)
         document_card.layout.addLayout(document_grid)
         content_layout.addWidget(document_card)
 
@@ -1704,8 +1928,8 @@ class ResuBuilderQtApp(QMainWindow):
         folders_grid.setVerticalSpacing(14)
         folders_grid.setColumnStretch(0, 1)
 
-        self.settings_workspace_dir_edit = QLineEdit(getattr(self.app_settings, "last_workspace_dir", "") or str(Path("data/applications")))
-        self.settings_export_dir_edit = QLineEdit(getattr(self.app_settings, "last_export_dir", "") or str(Path("exports")))
+        self.settings_workspace_dir_edit = QLineEdit(getattr(self.app_settings, "last_workspace_dir", "") or str(applications_dir()))
+        self.settings_export_dir_edit = QLineEdit(getattr(self.app_settings, "last_export_dir", "") or str(exports_dir()))
         self._prepare_form_control(self.settings_workspace_dir_edit, min_width=520)
         self._prepare_form_control(self.settings_export_dir_edit, min_width=520)
 
@@ -1827,6 +2051,29 @@ class ResuBuilderQtApp(QMainWindow):
             "requirements": self.job_requirements_edit.toPlainText().strip() if hasattr(self, "job_requirements_edit") else "",
         }
 
+    def _selected_output_language(self) -> str:
+        if hasattr(self, "output_language_combo"):
+            value = self.output_language_combo.currentText().strip()
+        else:
+            value = getattr(self.app_settings, "output_language", "English")
+        return value if value in OUTPUT_LANGUAGE_OPTIONS else "English"
+
+    def _language_instruction_block(self) -> str:
+        language = self._selected_output_language()
+        if language == "German":
+            return (
+                "Output language requirement:\n"
+                "Write the final CV or covering letter in German. Translate all necessary candidate, job, and evidence information into natural professional German. "
+                "Keep names, email addresses, phone numbers, URLs, company names, product names, programming languages, libraries, frameworks, model names, dates, degree names, and exact numbers unchanged unless a German wording is clearly standard. "
+                "Use formal professional German suitable for a job application. Do not explain that a translation was performed. Return only the final document text."
+            )
+        return "Output language requirement:\nWrite the final CV or covering letter in English."
+
+    def _combined_job_brief_for_generation(self) -> str:
+        base = self._combined_job_brief()
+        language_block = self._language_instruction_block()
+        return f"{language_block}\n\n{base}".strip()
+
     def _combined_job_brief(self) -> str:
         details = self._job_details_dict()
         sections: list[str] = []
@@ -1868,7 +2115,7 @@ class ResuBuilderQtApp(QMainWindow):
         template_name = self.template_combo.currentText() if hasattr(self, "template_combo") else getattr(self.app_settings, "template_name", "ATS Friendly")
         pdf_template = self.export_pdf_template_combo.currentText() if hasattr(self, "export_pdf_template_combo") else getattr(self.app_settings, "pdf_template", "ATS Friendly")
         pdf_page_size = self.export_page_size_combo.currentText() if hasattr(self, "export_page_size_combo") else getattr(self.app_settings, "pdf_page_size", "A4")
-        export_dir = self.export_dir_edit.text().strip() if hasattr(self, "export_dir_edit") else getattr(self.app_settings, "last_export_dir", "exports")
+        export_dir = self.export_dir_edit.text().strip() if hasattr(self, "export_dir_edit") else getattr(self.app_settings, "last_export_dir", str(exports_dir()))
         return {
             "source": "ResuBuilder",
             "metadata": metadata,
@@ -1877,22 +2124,26 @@ class ResuBuilderQtApp(QMainWindow):
             "structured_evidence": self._structured_evidence_text(),
             "job_details": self._job_details_dict(),
             "job_description": self._combined_job_brief(),
-            "generated_cv": self.generated_cv,
+            "generated_cv": self._document_with_current_section_order(self.generated_cv) if hasattr(self, "section_order_list") else self.generated_cv,
             "generated_covering_letter": self.generated_covering_letter,
             "quality_report": self._quality_report_text(),
             "ai_quality_review": self.ai_quality_review,
+            "manual_edit_instructions": self._manual_edit_instructions_text(),
             "job_fit_analysis": self.job_fit_analysis,
             "ui_state": {
                 "document_type": self.document_type_combo.currentText() if hasattr(self, "document_type_combo") else "CV",
                 "template_name": template_name,
+                "output_language": self._selected_output_language(),
                 "review_document": self.review_document_combo.currentText() if hasattr(self, "review_document_combo") else "CV",
                 "export_document": self.export_document_combo.currentText() if hasattr(self, "export_document_combo") else "CV",
+                "cv_section_order": self._current_section_order() if hasattr(self, "section_order_list") else [],
             },
             "settings": {
                 "provider": self.app_settings.ai_provider,
                 "ollama_model": self.app_settings.ollama_model,
                 "openai_model": self.app_settings.openai_model,
                 "generation_mode": self.app_settings.generation_mode,
+                "output_language": self._selected_output_language(),
                 "pdf_template": pdf_template,
                 "pdf_page_size": pdf_page_size,
                 "export_dir": export_dir,
@@ -1915,7 +2166,8 @@ class ResuBuilderQtApp(QMainWindow):
             f"Structured evidence blocks: {len(self.evidence_entries)}\n"
             f"Job fit analysis: {'yes' if self.job_fit_analysis.strip() else 'no'}\n"
             f"Quality report: {'yes' if self._quality_report_text() != 'No quality report exported from ResuBuilder.' else 'no'}\n"
-            f"AI quality review: {'yes' if self.ai_quality_review.strip() else 'no'}"
+            f"AI quality review: {'yes' if self.ai_quality_review.strip() else 'no'}\n"
+            f"Manual edit instructions: {'yes' if self._manual_edit_instructions_text().strip() else 'no'}"
         )
 
     def _workspace_open_dir(self) -> Path:
@@ -1974,10 +2226,15 @@ class ResuBuilderQtApp(QMainWindow):
         self.generated_covering_letter = ""
         self.job_fit_analysis = ""
         self.ai_quality_review = ""
+        self.manual_edit_instructions = ""
+        if hasattr(self, "manual_edit_instructions_edit"):
+            self.manual_edit_instructions_edit.clear()
         if hasattr(self, "job_fit_edit"):
             self.job_fit_edit.clear()
         if hasattr(self, "job_fit_status_label"):
             self.job_fit_status_label.setText("No job fit analysis yet. Generate without it only for quick tests.")
+        if hasattr(self, "output_language_combo"):
+            self.output_language_combo.setCurrentText(getattr(self.app_settings, "output_language", "English"))
         if hasattr(self, "output_edit"):
             self.output_edit.clear()
         if hasattr(self, "quality_report_edit"):
@@ -2097,6 +2354,9 @@ class ResuBuilderQtApp(QMainWindow):
             self.ai_quality_review_edit.setPlainText(self.ai_quality_review or "No AI review saved in this workspace.")
         if hasattr(self, "ai_review_status_label"):
             self.ai_review_status_label.setText("AI review loaded from workspace." if self.ai_quality_review.strip() else "No AI review saved in this workspace.")
+        self.manual_edit_instructions = str(snapshot.get("manual_edit_instructions", "") or "")
+        if hasattr(self, "manual_edit_instructions_edit"):
+            self.manual_edit_instructions_edit.setPlainText(self.manual_edit_instructions)
         self.job_fit_analysis = str(snapshot.get("job_fit_analysis", "") or "")
         if hasattr(self, "job_fit_edit"):
             self.job_fit_edit.setPlainText(self.job_fit_analysis)
@@ -2105,10 +2365,17 @@ class ResuBuilderQtApp(QMainWindow):
         ui_state = snapshot.get("ui_state") or {}
         if ui_state.get("template_name"):
             self.template_combo.setCurrentText(str(ui_state.get("template_name")))
+        if ui_state.get("output_language") and hasattr(self, "output_language_combo"):
+            self.output_language_combo.setCurrentText(str(ui_state.get("output_language")))
+        elif (snapshot.get("settings") or {}).get("output_language") and hasattr(self, "output_language_combo"):
+            self.output_language_combo.setCurrentText(str((snapshot.get("settings") or {}).get("output_language")))
         if ui_state.get("review_document"):
             self.review_document_combo.setCurrentText(str(ui_state.get("review_document")))
         if ui_state.get("export_document"):
             self.export_document_combo.setCurrentText(str(ui_state.get("export_document")))
+        if hasattr(self, "section_order_list"):
+            self._refresh_section_order_list(ui_state.get("cv_section_order") or None)
+        self._refresh_review_page_break_sections()
         settings = snapshot.get("settings") or {}
         if settings.get("pdf_template"):
             self.export_pdf_template_combo.setCurrentText(str(settings.get("pdf_template")))
@@ -2271,9 +2538,12 @@ class ResuBuilderQtApp(QMainWindow):
             location=self.location_edit.text().strip(),
             title=self.title_edit.text().strip(),
             summary=self.summary_edit.toPlainText().strip(),
-            skills=self.skills_edit.toPlainText().strip(),
-            projects=self.projects_edit.toPlainText().strip(),
+            studies=self.education_edit.toPlainText().strip() if hasattr(self, "education_edit") else "",
             professions=self.professions_edit.toPlainText().strip(),
+            projects=self.projects_edit.toPlainText().strip(),
+            skills=self.skills_edit.toPlainText().strip(),
+            languages=self.languages_edit.toPlainText().strip() if hasattr(self, "languages_edit") else "",
+            links=self.links_edit.toPlainText().strip() if hasattr(self, "links_edit") else "",
             structured_evidence=self._structured_evidence_text(),
         )
 
@@ -2334,6 +2604,12 @@ class ResuBuilderQtApp(QMainWindow):
         self.location_edit.setText(str(data.get("location", "") or ""))
         self.title_edit.setText(str(data.get("title", "") or ""))
         self.summary_edit.setPlainText(str(data.get("summary", "") or ""))
+        if hasattr(self, "education_edit"):
+            self.education_edit.setPlainText(str(data.get("studies", data.get("education", "")) or ""))
+        if hasattr(self, "languages_edit"):
+            self.languages_edit.setPlainText(str(data.get("languages", "") or ""))
+        if hasattr(self, "links_edit"):
+            self.links_edit.setPlainText(str(data.get("links", "") or ""))
         self.skills_edit.setPlainText(str(data.get("skills", "") or ""))
         self.projects_edit.setPlainText(str(data.get("projects", "") or ""))
         self.professions_edit.setPlainText(str(data.get("professions", "") or ""))
@@ -2348,6 +2624,7 @@ class ResuBuilderQtApp(QMainWindow):
                 self.evidence_list.setCurrentRow(0)
 
     def _save_current_profile(self) -> None:
+        """Save the active profile to the default project profile file."""
         ok, message = self._validate_profile()
         if not ok:
             QMessageBox.warning(self, "Cannot save profile", message)
@@ -2360,12 +2637,45 @@ class ResuBuilderQtApp(QMainWindow):
             return
         QMessageBox.information(self, "Profile saved", f"Profile saved to:\n{PROFILE_PATH}")
 
-    def _load_saved_profile(self) -> None:
+    def _save_profile_as(self) -> None:
+        """Save the active profile to a user-selected JSON file."""
+        ok, message = self._validate_profile()
+        if not ok:
+            QMessageBox.warning(self, "Cannot save profile", message)
+            return
+        PROFILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save profile as",
+            str(PROFILE_PATH),
+            "Profile JSON (*.json);;JSON files (*.json)",
+        )
+        if not file_path:
+            return
+        try:
+            path = Path(file_path)
+            if path.suffix.lower() != ".json":
+                path = path.with_suffix(".json")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(self._profile_to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001
+            self._write_qt_log("Profile save-as failed:\n" + traceback.format_exc())
+            QMessageBox.critical(self, "Profile save failed", str(exc))
+            return
+        QMessageBox.information(self, "Profile saved", f"Profile saved to:\n{path}")
+
+    def _load_profile(self) -> None:
+        """Load a profile JSON from the profile data folder.
+
+        This replaces the old separate "Load Saved Profile" and "Import Profile JSON"
+        actions. One loader handles both the default saved profile and any user-selected
+        profile JSON file.
+        """
         PROFILE_PATH.parent.mkdir(parents=True, exist_ok=True)
         start_path = PROFILE_PATH if PROFILE_PATH.exists() else PROFILE_PATH.parent
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "Load saved profile",
+            "Load profile",
             str(start_path),
             "Profile JSON (*.json);;JSON files (*.json);;All files (*.*)",
         )
@@ -2382,48 +2692,101 @@ class ResuBuilderQtApp(QMainWindow):
         self._apply_profile_data(data)
         QMessageBox.information(self, "Profile loaded", f"Profile loaded from:\n{file_path}")
 
+    # Backward-compatible aliases for older menu/action references.
+    def _load_saved_profile(self) -> None:
+        self._load_profile()
+
     def _import_profile_json(self) -> None:
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Import profile JSON",
-            str(Path("data")),
-            "JSON files (*.json);;All files (*.*)",
-        )
-        if not file_path:
-            return
-        try:
-            data = json.loads(Path(file_path).read_text(encoding="utf-8"))
-            if not isinstance(data, dict):
-                raise ValueError("Profile JSON must contain a JSON object.")
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Profile import failed", str(exc))
-            return
-        self._apply_profile_data(data)
-        QMessageBox.information(self, "Profile imported", "Profile data imported. Validate and save it before generating.")
+        self._load_profile()
 
     def _export_profile_json(self) -> None:
-        ok, message = self._validate_profile()
-        if not ok:
-            QMessageBox.warning(self, "Cannot export profile", message)
-            return
-        default_path = Path("data") / "candidate_profile_export.json"
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export profile JSON",
-            str(default_path),
-            "JSON files (*.json)",
-        )
-        if not file_path:
-            return
+        self._save_profile_as()
+
+    def _normalized_ollama_base_url(self, base_url: str | None = None) -> str:
+        value = str(base_url or getattr(self.app_settings, "ollama_base_url", "http://localhost:11434") or "http://localhost:11434").strip()
+        return value.rstrip("/") or "http://localhost:11434"
+
+    def _fetch_ollama_models(self, base_url: str, timeout_seconds: int = 5) -> tuple[bool, list[str], str]:
+        """Return installed Ollama model names from the local Ollama API."""
+        url = f"{self._normalized_ollama_base_url(base_url)}/api/tags"
         try:
-            path = Path(file_path)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(self._profile_to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
+            request = urllib.request.Request(url, headers={"Accept": "application/json"})
+            with urllib.request.urlopen(request, timeout=max(2, timeout_seconds)) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except urllib.error.URLError as exc:
+            return False, [], f"Could not connect to Ollama at {url}. {exc}"
+        except TimeoutError:
+            return False, [], f"Timed out while connecting to Ollama at {url}."
         except Exception as exc:  # noqa: BLE001
-            self._write_qt_log("Profile export failed:\n" + traceback.format_exc())
-            QMessageBox.critical(self, "Profile export failed", str(exc))
-            return
-        QMessageBox.information(self, "Profile exported", f"Profile exported to:\n{path}")
+            return False, [], f"Could not read Ollama model list from {url}. {exc}"
+
+        models: list[str] = []
+        for item in payload.get("models", []):
+            if isinstance(item, dict):
+                name = str(item.get("name", "") or "").strip()
+                if name:
+                    models.append(name)
+        return True, sorted(set(models)), ""
+
+    def _ollama_setup_message(self, base_url: str, model: str, detail: str = "") -> str:
+        detail_text = f"\n\nDetails:\n{detail}" if detail else ""
+        return (
+            "Ollama is not ready on this computer.\n\n"
+            f"ResuBuilder is configured to use:\n{base_url}\n\n"
+            "To use local AI on this computer:\n"
+            "1. Install Ollama for Windows from https://ollama.com/download/windows\n"
+            "2. Open PowerShell\n"
+            f"3. Run: ollama pull {model}\n"
+            "4. Start Ollama if it is not already running\n"
+            "5. Restart ResuBuilder or click Check Ollama Setup again\n\n"
+            "Recommended models:\n"
+            "- qwen3:8b for most computers\n"
+            "- qwen3:14b for stronger computers\n"
+            "- llama3.1:8b as a backup option"
+            f"{detail_text}"
+        )
+
+    def _check_ollama_dialog_values(self, base_url_edit: QLineEdit, model_combo: QComboBox) -> bool:
+        base_url = self._normalized_ollama_base_url(base_url_edit.text())
+        model = model_combo.currentText().strip() or "qwen3:8b"
+        return self._check_ollama_ready(show_success=True, base_url=base_url, model=model)
+
+    def _check_ollama_from_settings(self, show_success: bool = True) -> bool:
+        self._sync_settings_from_controls()
+        return self._check_ollama_ready(show_success=show_success)
+
+    def _check_ollama_ready(self, show_success: bool = False, base_url: str | None = None, model: str | None = None) -> bool:
+        base_url = self._normalized_ollama_base_url(base_url)
+        model = str(model or getattr(self.app_settings, "ollama_model", "qwen3:8b") or "qwen3:8b").strip()
+        ok, installed_models, error = self._fetch_ollama_models(base_url, timeout_seconds=5)
+        if not ok:
+            QMessageBox.warning(self, "Ollama setup needed", self._ollama_setup_message(base_url, model, error))
+            return False
+        if model not in installed_models:
+            installed = "\n".join(f"- {name}" for name in installed_models) if installed_models else "No local models found."
+            detail = f"Selected model '{model}' is not installed.\n\nInstalled models:\n{installed}"
+            QMessageBox.warning(self, "Ollama model missing", self._ollama_setup_message(base_url, model, detail))
+            return False
+        if show_success:
+            QMessageBox.information(
+                self,
+                "Ollama ready",
+                f"Ollama is reachable at {base_url}.\n\nInstalled model ready: {model}",
+            )
+        return True
+
+    def _ensure_ai_ready(self, settings: AISettings, action_name: str) -> bool:
+        if settings.provider != "Ollama Local":
+            return True
+        return self._check_ollama_ready(show_success=False, base_url=settings.ollama_base_url, model=settings.ollama_model)
+
+    def _show_ollama_setup_help(self) -> None:
+        model = str(getattr(self.app_settings, "ollama_model", "qwen3:8b") or "qwen3:8b")
+        base_url = self._normalized_ollama_base_url()
+        QMessageBox.information(self, "Ollama setup help", self._ollama_setup_message(base_url, model))
+
+    def _open_ollama_download(self) -> None:
+        QDesktopServices.openUrl(QUrl("https://ollama.com/download/windows"))
 
     def _settings_to_ai_settings(self) -> AISettings:
         return AISettings(
@@ -2454,6 +2817,8 @@ class ResuBuilderQtApp(QMainWindow):
         self._job_fit_job_id += 1
         job_id = self._job_fit_job_id
         settings = self._settings_to_ai_settings()
+        if not self._ensure_ai_ready(settings, "job fit analysis"):
+            return
         company = self._job_company()
         role = self._job_title()
 
@@ -2522,19 +2887,21 @@ class ResuBuilderQtApp(QMainWindow):
         document_type = self.document_type_combo.currentText()
         request = GenerationRequest(
             profile=self._build_profile(),
-            job_description=self._combined_job_brief(),
+            job_description=self._combined_job_brief_for_generation(),
             template_name=self.template_combo.currentText(),
             document_type=document_type,
             ai_settings=self._settings_to_ai_settings(),
             job_fit_analysis=self.job_fit_analysis,
         )
         context = QtGenerationContext(document_type=document_type, request=request)
+        if not self._ensure_ai_ready(request.ai_settings, "generation"):
+            return
 
         self._generation_running = True
         self._generation_job_id += 1
         job_id = self._generation_job_id
         self.generate_button.setEnabled(False)
-        self.status_label.setText(f"Generating {document_type} with {request.ai_settings.provider} / {request.ai_settings.ollama_model}...")
+        self.status_label.setText(f"Generating {document_type} in {self._selected_output_language()} with {request.ai_settings.provider} / {request.ai_settings.ollama_model}...")
         self.output_edit.setPlainText("Working. Do not close the app. Local AI can take a while on the first run.")
         self._write_qt_log(f"Generation started: job_id={job_id}, type={document_type}, provider={request.ai_settings.provider}, model={request.ai_settings.ollama_model}")
 
@@ -2563,6 +2930,9 @@ class ResuBuilderQtApp(QMainWindow):
         else:
             self.generated_covering_letter = text
         self.output_edit.setPlainText(text)
+        if document_type == "CV" and hasattr(self, "section_order_list"):
+            self._refresh_section_order_list()
+        self._refresh_review_page_break_sections()
         self.status_label.setText(f"{document_type} generated. Verify every claim, then run Review > Quality Check.")
         self._update_workspace_status(f"{document_type} generated. Save the workspace to preserve this output.")
 
@@ -2599,7 +2969,7 @@ class ResuBuilderQtApp(QMainWindow):
 
     def _write_qt_log(self, message: str) -> None:
         try:
-            log_dir = Path("data/logs")
+            log_dir = logs_dir()
             log_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             with (log_dir / "qt_gui.log").open("a", encoding="utf-8") as handle:
@@ -2614,12 +2984,87 @@ class ResuBuilderQtApp(QMainWindow):
             return document_type, self.generated_cv
         return document_type, self.generated_covering_letter
 
+    def _set_selected_review_document_text(self, document_type: str, text: str) -> None:
+        if document_type == "CV":
+            self.generated_cv = text
+            if hasattr(self, "section_order_list"):
+                self._refresh_section_order_list()
+        else:
+            self.generated_covering_letter = text
+        if hasattr(self, "document_type_combo"):
+            self.document_type_combo.setCurrentText(document_type)
+        if hasattr(self, "review_document_combo"):
+            self.review_document_combo.setCurrentText(document_type)
+        if hasattr(self, "output_edit"):
+            self.output_edit.setPlainText(text)
+        self._refresh_review_page_break_sections()
+
+    def _refresh_review_page_break_sections(self) -> None:
+        if not hasattr(self, "page_break_section_combo"):
+            return
+        text = self.generated_cv
+        self.page_break_section_combo.clear()
+        sections = extract_markdown_sections(text)
+        headings = [section.heading for section in sections]
+        if not headings:
+            self.page_break_section_combo.addItem("No level-2 CV sections found yet. Generate a CV first.")
+            self.page_break_section_combo.setEnabled(False)
+            if hasattr(self, "insert_page_break_button"):
+                self.insert_page_break_button.setEnabled(False)
+            return
+        self.page_break_section_combo.setEnabled(True)
+        if hasattr(self, "insert_page_break_button"):
+            self.insert_page_break_button.setEnabled(True)
+        self.page_break_section_combo.addItems(headings)
+
+    def _insert_page_break_after_selected_section(self) -> None:
+        text = self.generated_cv
+        if not text.strip():
+            QMessageBox.warning(self, "No CV generated", "Generate a CV before adding manual page splits.")
+            return
+        if not hasattr(self, "page_break_section_combo") or not self.page_break_section_combo.isEnabled():
+            QMessageBox.warning(self, "No section selected", "Refresh sections and select a CV section first.")
+            return
+        heading = self.page_break_section_combo.currentText().strip()
+        if not heading or heading.startswith("No level-2"):
+            QMessageBox.warning(self, "No section selected", "Select a valid CV section first.")
+            return
+        updated = insert_page_break_after_section(text, heading)
+        if updated == text:
+            QMessageBox.information(self, "Manual page split", f"A page split already exists after {heading}, or the section could not be found.")
+            return
+        self._set_selected_review_document_text("CV", updated)
+        if hasattr(self, "quality_report_edit"):
+            self.quality_report_edit.setPlainText("Manual page split added. Run Quality Check again if you also changed content.")
+        if hasattr(self, "review_score_label"):
+            self.review_score_label.setText("Layout updated")
+        if hasattr(self, "review_status_label"):
+            self.review_status_label.setText(f"PDF page split added after {heading}. Export the CV PDF to verify the final page layout.")
+        self._update_workspace_status("Manual CV page split added. Save the workspace to preserve it.")
+
+    def _remove_manual_page_breaks(self) -> None:
+        document_type = "CV"
+        text = self.generated_cv
+        if not text.strip():
+            QMessageBox.warning(self, "No generated CV", "Generate a CV before removing manual page splits.")
+            return
+        updated = remove_page_break_markers(text)
+        if updated == text:
+            QMessageBox.information(self, "Manual page splits", "No manual page splits were found in the selected document.")
+            return
+        self._set_selected_review_document_text(document_type, updated)
+        if hasattr(self, "review_status_label"):
+            self.review_status_label.setText(f"Manual page splits removed from {document_type}.")
+        self._update_workspace_status(f"Manual page splits removed from {document_type}. Save the workspace to preserve it.")
+
     def _show_selected_review_document(self) -> None:
         document_type, text = self._selected_review_document_text()
         if not text.strip():
             QMessageBox.information(self, "No generated document", f"Generate a {document_type} before reviewing it.")
             return
         self.output_edit.setPlainText(text)
+        if document_type == "CV" and hasattr(self, "section_order_list"):
+            self._refresh_section_order_list()
         self.document_type_combo.setCurrentText(document_type)
         self.show_page("Generate")
 
@@ -2663,11 +3108,28 @@ class ResuBuilderQtApp(QMainWindow):
     def _build_review_generation_request(self, document_type: str) -> GenerationRequest:
         return GenerationRequest(
             profile=self._build_profile(),
-            job_description=self._combined_job_brief(),
+            job_description=self._combined_job_brief_for_generation(),
             template_name=self.template_combo.currentText() if hasattr(self, "template_combo") else "ATS Friendly",
             document_type=document_type,
             ai_settings=self._settings_to_ai_settings(),
             job_fit_analysis=self.job_fit_analysis,
+        )
+
+    def _manual_edit_instructions_text(self) -> str:
+        if hasattr(self, "manual_edit_instructions_edit"):
+            self.manual_edit_instructions = self.manual_edit_instructions_edit.toPlainText().strip()
+        return self.manual_edit_instructions.strip()
+
+    def _manual_instruction_report(self, document_type: str, instructions: str) -> str:
+        return (
+            "# User AI Edit Instructions\n\n"
+            f"The user wants targeted edits to the selected {document_type}. Follow these instructions exactly, but do not invent employers, dates, degrees, metrics, tools, or achievements. Preserve truthful candidate evidence and keep the document ATS-friendly.\n\n"
+            "## Requested edits\n"
+            f"{instructions.strip()}\n\n"
+            "## Hard rules\n"
+            "- Apply the user's requested changes when they are compatible with the available evidence.\n"
+            "- If a requested emphasis is unsupported, keep it modest or omit it.\n"
+            "- Return only the revised document text.\n"
         )
 
     def _quality_report_ready_text(self) -> str:
@@ -2679,7 +3141,7 @@ class ResuBuilderQtApp(QMainWindow):
         return text
 
     def _set_review_action_buttons_enabled(self, enabled: bool) -> None:
-        for name in ("run_quality_button", "run_ai_review_button", "improve_quality_button"):
+        for name in ("run_quality_button", "run_ai_review_button", "improve_quality_button", "apply_custom_edit_button", "refresh_page_break_sections_button", "insert_page_break_button", "remove_page_breaks_button"):
             button = getattr(self, name, None)
             if button is not None:
                 button.setEnabled(enabled)
@@ -2705,10 +3167,13 @@ class ResuBuilderQtApp(QMainWindow):
             QMessageBox.information(self, "Review task running", "Wait for the current review or improvement task to finish.")
             return
 
+        request = self._build_review_generation_request(document_type)
+        if not self._ensure_ai_ready(request.ai_settings, "AI quality review"):
+            return
+
         self._ai_review_running = True
         self._ai_review_job_id += 1
         job_id = self._ai_review_job_id
-        request = self._build_review_generation_request(document_type)
         self._set_review_action_buttons_enabled(False)
         self.ai_review_status_label.setText(f"Running AI quality review with {request.ai_settings.provider} / {request.ai_settings.ollama_model}...")
         self.ai_quality_review_edit.setPlainText("Working. The AI is reading the selected document, job details, candidate evidence, and quality report.")
@@ -2756,6 +3221,65 @@ class ResuBuilderQtApp(QMainWindow):
         self.ai_quality_review_edit.setPlainText("AI quality review failed. Check data/logs/qt_gui.log for details.")
         QMessageBox.critical(self, "AI review failed", error)
 
+    def _start_custom_ai_edit(self) -> None:
+        document_type, text = self._selected_review_document_text()
+        if not text.strip():
+            QMessageBox.warning(self, "Cannot edit document", f"Generate a {document_type} first.")
+            return
+        ok, message = self._validate_profile()
+        if not ok:
+            QMessageBox.warning(self, "Cannot edit document", message)
+            return
+        ok, message = self._validate_job_details()
+        if not ok:
+            QMessageBox.warning(self, "Cannot edit document", message)
+            return
+        instructions = self._manual_edit_instructions_text()
+        if not instructions:
+            QMessageBox.warning(self, "No edit instructions", "Write specific instructions before applying an AI edit.")
+            return
+        if self._ai_review_running or self._improvement_running:
+            QMessageBox.information(self, "Review task running", "Wait for the current review or improvement task to finish.")
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "Apply AI edit instructions",
+            f"Apply the instructions to the selected {document_type}? This replaces the current generated {document_type} text. Save your workspace first if you want to preserve the current version.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        self._improvement_running = True
+        self._improvement_job_id += 1
+        self._improvement_reason = "AI edit instructions"
+        job_id = self._improvement_job_id
+        request = self._build_review_generation_request(document_type)
+        if not self._ensure_ai_ready(request.ai_settings, "AI edit instructions"):
+            self._improvement_running = False
+            return
+        heuristic_report = self._manual_instruction_report(document_type, instructions)
+        ai_review = self.ai_quality_review_edit.toPlainText().strip() if hasattr(self, "ai_quality_review_edit") else self.ai_quality_review
+        if ai_review.startswith("No AI review") or ai_review.startswith("AI review cleared") or ai_review.startswith("Improvement complete"):
+            ai_review = ""
+
+        self._set_review_action_buttons_enabled(False)
+        self.review_status_label.setText(f"Applying AI edit instructions to {document_type} with {request.ai_settings.provider} / {request.ai_settings.ollama_model}...")
+        self.ai_review_status_label.setText("AI edit running. Do not close the app.")
+        self.output_edit.setPlainText(f"Applying AI edit instructions to {document_type}. The revised text will replace this screen when finished.")
+        self.document_type_combo.setCurrentText(document_type)
+        self.show_page("Generate")
+        self._write_qt_log(f"Manual AI edit started: job_id={job_id}, type={document_type}")
+
+        thread = threading.Thread(
+            target=self._run_improvement_worker,
+            args=(job_id, request, text, heuristic_report, ai_review),
+            daemon=True,
+        )
+        thread.start()
+
     def _start_quality_improvement(self) -> None:
         document_type, text = self._selected_review_document_text()
         if not text.strip():
@@ -2789,8 +3313,12 @@ class ResuBuilderQtApp(QMainWindow):
 
         self._improvement_running = True
         self._improvement_job_id += 1
+        self._improvement_reason = "quality fixes"
         job_id = self._improvement_job_id
         request = self._build_review_generation_request(document_type)
+        if not self._ensure_ai_ready(request.ai_settings, "quality improvement"):
+            self._improvement_running = False
+            return
         ai_review = self.ai_quality_review_edit.toPlainText().strip() if hasattr(self, "ai_quality_review_edit") else self.ai_quality_review
         if ai_review.startswith("No AI review") or ai_review.startswith("AI review cleared"):
             ai_review = ""
@@ -2844,14 +3372,18 @@ class ResuBuilderQtApp(QMainWindow):
         else:
             self.generated_covering_letter = text
         self.output_edit.setPlainText(text)
+        if document_type == "CV" and hasattr(self, "section_order_list"):
+            self._refresh_section_order_list()
         self.document_type_combo.setCurrentText(document_type)
         self.review_document_combo.setCurrentText(document_type)
-        self.status_label.setText(f"{document_type} improved with quality fixes. Run Quality Check again before exporting.")
-        self.review_status_label.setText("Improvement complete. Run Quality Check again before export.")
-        self.ai_review_status_label.setText("Improvement complete. Previous AI review may no longer match the improved text.")
+        self._refresh_review_page_break_sections()
+        reason = getattr(self, "_improvement_reason", "quality fixes")
+        self.status_label.setText(f"{document_type} updated with {reason}. Run Quality Check again before exporting.")
+        self.review_status_label.setText(f"Update complete using {reason}. Run Quality Check again before export.")
+        self.ai_review_status_label.setText("Document updated. Previous AI review may no longer match the revised text.")
         self.ai_quality_review = ""
-        self.ai_quality_review_edit.setPlainText("Improvement complete. Run AI Quality Review again if needed.")
-        self.quality_report_edit.setPlainText("Improvement complete. Run Quality Check again to score the updated document.")
+        self.ai_quality_review_edit.setPlainText("Document updated. Run AI Quality Review again if needed.")
+        self.quality_report_edit.setPlainText("Document updated. Run Quality Check again to score the revised document.")
         self.review_score_label.setText("Needs new quality check")
         self._update_workspace_status(f"{document_type} improved. Save the workspace to preserve the updated document.")
         self.show_page("Generate")
@@ -2868,12 +3400,108 @@ class ResuBuilderQtApp(QMainWindow):
     def _selected_export_document_text(self) -> tuple[str, str]:
         document_type = self.export_document_combo.currentText() if hasattr(self, "export_document_combo") else "CV"
         if document_type == "CV":
+            return document_type, self._document_with_current_section_order(self.generated_cv)
+        return document_type, self.generated_covering_letter
+
+    def _raw_selected_export_document_text(self) -> tuple[str, str]:
+        document_type = self.export_document_combo.currentText() if hasattr(self, "export_document_combo") else "CV"
+        if document_type == "CV":
             return document_type, self.generated_cv
         return document_type, self.generated_covering_letter
 
+    def _current_section_order(self) -> list[str]:
+        if not hasattr(self, "section_order_list"):
+            return []
+        return [self.section_order_list.item(index).text() for index in range(self.section_order_list.count())]
+
+    def _document_with_current_section_order(self, text: str) -> str:
+        order = self._current_section_order()
+        if not order or not text.strip():
+            return text
+        return reorder_markdown_sections(text, order)
+
+    def _refresh_section_order_list(self, preferred_order: list[str] | None = None) -> None:
+        if not hasattr(self, "section_order_list"):
+            return
+        document_type, text = self._raw_selected_export_document_text() if hasattr(self, "export_document_combo") else ("CV", self.generated_cv)
+        self.section_order_list.clear()
+        if document_type != "CV":
+            self.section_order_list.addItem("Covering letters usually do not need section reordering.")
+            self.section_order_list.setEnabled(False)
+            return
+        self.section_order_list.setEnabled(True)
+        sections = extract_markdown_sections(text)
+        headings = [section.heading for section in sections]
+        if preferred_order:
+            preferred = [heading for heading in preferred_order if heading in headings]
+            headings = preferred + [heading for heading in headings if heading not in preferred]
+        if not headings:
+            self.section_order_list.addItem("No level-2 sections found yet. Generate a CV first.")
+            return
+        for heading in headings:
+            self.section_order_list.addItem(heading)
+
+    def _move_section_order(self, direction: int) -> None:
+        if not hasattr(self, "section_order_list") or not self.section_order_list.isEnabled():
+            return
+        row = self.section_order_list.currentRow()
+        if row < 0:
+            return
+        new_row = row + direction
+        if new_row < 0 or new_row >= self.section_order_list.count():
+            return
+        item = self.section_order_list.takeItem(row)
+        self.section_order_list.insertItem(new_row, item)
+        self.section_order_list.setCurrentRow(new_row)
+
+    def _apply_section_order_to_document(self) -> None:
+        document_type, text = self._raw_selected_export_document_text()
+        if document_type != "CV":
+            QMessageBox.information(self, "Section order", "Section reordering is intended for CV exports. Covering letters keep their paragraph order.")
+            return
+        if not text.strip():
+            QMessageBox.warning(self, "No CV generated", "Generate a CV before changing section order.")
+            return
+        updated = self._document_with_current_section_order(text)
+        self.generated_cv = updated
+        self.output_edit.setPlainText(updated)
+        self.document_type_combo.setCurrentText("CV")
+        self._refresh_section_order_list()
+        self.export_status_edit.setPlainText("CV section order applied. Run Review again if you changed the final layout substantially.")
+        self._update_workspace_status("CV section order updated. Save the workspace to preserve the layout.")
+
+    def _preview_ordered_document(self) -> None:
+        document_type, text = self._selected_export_document_text()
+        if not text.strip():
+            QMessageBox.warning(self, "Nothing to preview", f"Generate a {document_type} first.")
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"{document_type} Preview")
+        dialog.setModal(False)
+        dialog.resize(820, 720)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+        title = QLabel(f"Preview: {document_type} | Template: {self.export_pdf_template_combo.currentText()} | Page size: {self.export_page_size_combo.currentText()}")
+        title.setObjectName("CardTitle")
+        title.setWordWrap(True)
+        preview = QPlainTextEdit()
+        preview.setReadOnly(True)
+        preview.setPlainText(text)
+        close_row = QHBoxLayout()
+        close_row.addStretch(1)
+        close_button = QPushButton("Close")
+        close_button.setMinimumWidth(120)
+        close_button.clicked.connect(dialog.accept)
+        close_row.addWidget(close_button)
+        layout.addWidget(title)
+        layout.addWidget(preview, 1)
+        layout.addLayout(close_row)
+        dialog.exec()
+
     def _browse_export_dir(self) -> None:
-        current = self.export_dir_edit.text().strip() if hasattr(self, "export_dir_edit") else str(Path("exports"))
-        selected = QFileDialog.getExistingDirectory(self, "Select export folder", current or str(Path("exports")))
+        current = self.export_dir_edit.text().strip() if hasattr(self, "export_dir_edit") else str(exports_dir())
+        selected = QFileDialog.getExistingDirectory(self, "Select export folder", current or str(exports_dir()))
         if selected:
             self.export_dir_edit.setText(selected)
             self.app_settings.last_export_dir = selected
@@ -2883,8 +3511,8 @@ class ResuBuilderQtApp(QMainWindow):
                 self._write_qt_log("Could not persist last export directory:\n" + traceback.format_exc())
 
     def _export_root(self) -> Path:
-        value = self.export_dir_edit.text().strip() if hasattr(self, "export_dir_edit") else "exports"
-        return Path(value or "exports")
+        value = self.export_dir_edit.text().strip() if hasattr(self, "export_dir_edit") else str(exports_dir())
+        return Path(value or str(exports_dir()))
 
     def _clean_filename_part(self, value: str, fallback: str) -> str:
         cleaned = re.sub(r"[^A-Za-z0-9]+", "_", (value or "").strip()).strip("_")
@@ -2989,13 +3617,15 @@ class ResuBuilderQtApp(QMainWindow):
             "profile": self._build_profile().__dict__,
             "job_details": self._job_details_dict(),
             "job_description": self._combined_job_brief(),
-            "generated_cv": self.generated_cv,
+            "generated_cv": self._document_with_current_section_order(self.generated_cv) if hasattr(self, "section_order_list") else self.generated_cv,
             "generated_covering_letter": self.generated_covering_letter,
             "quality_report": self._quality_report_text(),
             "ai_quality_review": self.ai_quality_review,
+            "manual_edit_instructions": self._manual_edit_instructions_text(),
             "settings": {
                 "provider": self.app_settings.ai_provider,
                 "ollama_model": self.app_settings.ollama_model,
+                "output_language": self._selected_output_language(),
                 "pdf_template": template,
                 "pdf_page_size": page_size,
             },
@@ -3004,7 +3634,7 @@ class ResuBuilderQtApp(QMainWindow):
             package_dir = export_application_package(
                 export_root=export_root,
                 metadata=metadata,
-                cv_markdown=self.generated_cv,
+                cv_markdown=self._document_with_current_section_order(self.generated_cv) if hasattr(self, "section_order_list") else self.generated_cv,
                 covering_letter_markdown=self.generated_covering_letter,
                 quality_report_markdown=self._quality_report_text(),
                 application_snapshot=snapshot,
@@ -3048,14 +3678,14 @@ class ResuBuilderQtApp(QMainWindow):
             self.settings_status_label.setText("Theme preview applied. Click Save Settings to remember it after restart.")
 
     def _browse_settings_workspace_dir(self) -> None:
-        current = self.settings_workspace_dir_edit.text().strip() if hasattr(self, "settings_workspace_dir_edit") else str(Path("data/applications"))
-        selected = QFileDialog.getExistingDirectory(self, "Select workspace folder", current or str(Path("data/applications")))
+        current = self.settings_workspace_dir_edit.text().strip() if hasattr(self, "settings_workspace_dir_edit") else str(applications_dir())
+        selected = QFileDialog.getExistingDirectory(self, "Select workspace folder", current or str(applications_dir()))
         if selected and hasattr(self, "settings_workspace_dir_edit"):
             self.settings_workspace_dir_edit.setText(selected)
 
     def _browse_settings_export_dir(self) -> None:
-        current = self.settings_export_dir_edit.text().strip() if hasattr(self, "settings_export_dir_edit") else str(Path("exports"))
-        selected = QFileDialog.getExistingDirectory(self, "Select export folder", current or str(Path("exports")))
+        current = self.settings_export_dir_edit.text().strip() if hasattr(self, "settings_export_dir_edit") else str(exports_dir())
+        selected = QFileDialog.getExistingDirectory(self, "Select export folder", current or str(exports_dir()))
         if selected and hasattr(self, "settings_export_dir_edit"):
             self.settings_export_dir_edit.setText(selected)
 
@@ -3067,13 +3697,17 @@ class ResuBuilderQtApp(QMainWindow):
         if hasattr(self, "settings_ollama_url_edit"):
             self.app_settings.ollama_base_url = self.settings_ollama_url_edit.text().strip() or "http://localhost:11434"
         if hasattr(self, "settings_ollama_model_combo"):
-            self.app_settings.ollama_model = self.settings_ollama_model_combo.currentText().strip() or "qwen3:14b"
+            self.app_settings.ollama_model = self.settings_ollama_model_combo.currentText().strip() or "qwen3:8b"
         if hasattr(self, "settings_openai_model_combo"):
             self.app_settings.openai_model = self.settings_openai_model_combo.currentText().strip() or "gpt-4.1-mini"
         if hasattr(self, "settings_timeout_spin"):
             self.app_settings.timeout_seconds = int(self.settings_timeout_spin.value())
         if hasattr(self, "settings_template_combo"):
             self.app_settings.template_name = self.settings_template_combo.currentText()
+        if hasattr(self, "settings_output_language_combo"):
+            self.app_settings.output_language = self.settings_output_language_combo.currentText()
+        elif hasattr(self, "output_language_combo"):
+            self.app_settings.output_language = self.output_language_combo.currentText()
         if hasattr(self, "settings_pdf_template_combo"):
             self.app_settings.pdf_template = self.settings_pdf_template_combo.currentText()
         if hasattr(self, "settings_page_size_combo"):
@@ -3088,6 +3722,8 @@ class ResuBuilderQtApp(QMainWindow):
     def _apply_settings_to_existing_controls(self) -> None:
         if hasattr(self, "template_combo"):
             self.template_combo.setCurrentText(getattr(self.app_settings, "template_name", "ATS Friendly"))
+        if hasattr(self, "output_language_combo"):
+            self.output_language_combo.setCurrentText(getattr(self.app_settings, "output_language", "English"))
         if hasattr(self, "export_pdf_template_combo"):
             self.export_pdf_template_combo.setCurrentText(getattr(self.app_settings, "pdf_template", "ATS Friendly"))
         if hasattr(self, "export_page_size_combo"):
@@ -3111,14 +3747,16 @@ class ResuBuilderQtApp(QMainWindow):
             self.settings_provider_combo.setCurrentText(getattr(self.app_settings, "ai_provider", "Ollama Local"))
             self.settings_generation_mode_combo.setCurrentText(getattr(self.app_settings, "generation_mode", "Balanced"))
             self.settings_ollama_url_edit.setText(getattr(self.app_settings, "ollama_base_url", "http://localhost:11434"))
-            self.settings_ollama_model_combo.setCurrentText(getattr(self.app_settings, "ollama_model", "qwen3:14b"))
+            self.settings_ollama_model_combo.setCurrentText(getattr(self.app_settings, "ollama_model", "qwen3:8b"))
             self.settings_openai_model_combo.setCurrentText(getattr(self.app_settings, "openai_model", "gpt-4.1-mini"))
             self.settings_timeout_spin.setValue(int(getattr(self.app_settings, "timeout_seconds", 120)))
             self.settings_template_combo.setCurrentText(getattr(self.app_settings, "template_name", "ATS Friendly"))
             self.settings_pdf_template_combo.setCurrentText(getattr(self.app_settings, "pdf_template", "ATS Friendly"))
             self.settings_page_size_combo.setCurrentText(getattr(self.app_settings, "pdf_page_size", "A4"))
-            self.settings_workspace_dir_edit.setText(getattr(self.app_settings, "last_workspace_dir", "") or str(Path("data/applications")))
-            self.settings_export_dir_edit.setText(getattr(self.app_settings, "last_export_dir", "") or str(Path("exports")))
+            if hasattr(self, "settings_output_language_combo"):
+                self.settings_output_language_combo.setCurrentText(getattr(self.app_settings, "output_language", "English"))
+            self.settings_workspace_dir_edit.setText(getattr(self.app_settings, "last_workspace_dir", "") or str(applications_dir()))
+            self.settings_export_dir_edit.setText(getattr(self.app_settings, "last_export_dir", "") or str(exports_dir()))
             self.settings_theme_combo.setCurrentText(self._normalized_theme(getattr(self.app_settings, "ui_theme", "Dark blue")))
         self._apply_settings_to_existing_controls()
         try:
