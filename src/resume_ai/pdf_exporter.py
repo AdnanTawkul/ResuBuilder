@@ -14,11 +14,13 @@ from reportlab.platypus import (
     ListFlowable,
     ListItem,
     Paragraph,
+    PageBreak,
     SimpleDocTemplate,
     Spacer,
 )
 
 from .pdf_templates import PDFTemplateConfig, get_pdf_template_config
+from .document_layout import is_page_break_marker
 
 
 PAGE_SIZES = {
@@ -40,6 +42,7 @@ def export_markdown_to_pdf(
     - bold text with **bold** or __bold__
     - paragraphs
     - bullet lists beginning with -, *, or •
+    - manual page-break markers inserted by ResuBuilder
 
     Layout behavior:
     - ### subsection blocks, such as individual project descriptions, are kept
@@ -204,6 +207,10 @@ def _consume_one_block(
         flowables.append(Spacer(1, 2 if template.compact else 4))
         return flowables, index + 1
 
+    if is_page_break_marker(line):
+        flowables.append(PageBreak())
+        return flowables, index + 1
+
     if _is_bullet(line):
         bullet_lines = []
         while index < len(lines) and _is_bullet(lines[index].strip()):
@@ -246,7 +253,7 @@ def _consume_one_block(
 
 
 def _starts_new_block(line: str) -> bool:
-    return line.startswith("# ") or line.startswith("## ") or line.startswith("### ")
+    return is_page_break_marker(line) or line.startswith("# ") or line.startswith("## ") or line.startswith("### ")
 
 
 def _should_keep_together(lines: list[str]) -> bool:

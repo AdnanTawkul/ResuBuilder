@@ -1,65 +1,44 @@
-# Release Prep Checklist
+# Release Preparation Checklist
 
-Use this checklist before creating a GitHub release.
+Use this before tagging a GitHub release.
 
-## Source checks
+## Source app
 
-- [ ] `python app.py` launches the Qt app.
-- [ ] `python app_legacy.py` launches the legacy GUI.
-- [ ] No visible experimental wording remains in the primary app.
-- [ ] App title is ResuBuilder.
-- [ ] Logo appears in the app.
-- [ ] Settings save and restore correctly.
-- [ ] Theme switching works.
-- [ ] Profile validation works.
+- `python app.py` opens ResuBuilder Qt app
+- `python app_legacy.py` opens the legacy GUI
+- Settings persist after restart
+- Profile import/export works
+- Workspace save/load works
+- Evidence restores correctly
+- Job data restores correctly
+- Job fit analysis restores correctly
+- Quality report restores correctly
 
-## Workflow checks
+## Documents
 
-- [ ] Profile load works.
-- [ ] Profile save works.
-- [ ] Profile import/export works.
-- [ ] Workspace save/load works.
-- [ ] Evidence save/load works.
-- [ ] Job page fields save/load correctly.
-- [ ] Job fit analysis runs.
-- [ ] CV generation works.
-- [ ] Covering letter generation works.
-- [ ] Quality check works.
-- [ ] AI quality review works.
-- [ ] Improve with quality fixes works.
-- [ ] PDF export works.
-- [ ] Application package export works.
+- CV PDF export works
+- Covering letter PDF export works
+- Application package export creates both PDFs and Markdown files
+- Export folder naming is readable
+- Private `data/` files are ignored by Git
 
-## Packaged executable checks
+## Local AI
 
-- [ ] Clean old `build/` and `dist/` folders.
-- [ ] Build with `scripts/build_windows.ps1`.
-- [ ] `dist/ResuBuilder/ResuBuilder.exe` launches.
-- [ ] Packaged app can generate CV.
-- [ ] Packaged app can generate covering letter.
-- [ ] Packaged app can run quality check.
-- [ ] Packaged app can export PDF.
-- [ ] Packaged app can export application package.
-- [ ] Packaged app can save/load workspace.
-- [ ] Packaged app has no experimental labels.
+- Ollama connection test passes
+- Selected Ollama model works
+- Timeout setting is respected
+- App does not freeze during generation/review/improvement
 
-## Repository checks
+## Packaging
 
-- [ ] `build/` is not committed.
-- [ ] `dist/` is not committed.
-- [ ] `data/` is not committed.
-- [ ] `exports/` is not committed.
-- [ ] No API keys are committed.
-- [ ] README is up to date.
-- [ ] CHANGELOG is up to date.
-- [ ] Known limitations are documented.
-- [ ] Screenshots are added or screenshot placeholders are clearly marked.
+- `scripts/build_windows.ps1` finishes without errors
+- `dist/ResuBuilder/ResuBuilder.exe` launches
+- Assets are bundled
+- No console window opens during normal app use
 
-## GitHub release checks
+## GitHub
 
-- [ ] Create tag `v0.1.0`.
-- [ ] Upload zipped Windows build as a release asset.
-- [ ] Include release notes.
-- [ ] Mention local AI requires Ollama.
-- [ ] Mention OpenAI requires separate API billing/quota.
-- [ ] Mention this is an early release candidate.
+- README explains installation and usage
+- Screenshots are updated
+- Branch is merged into `main`
+- Version tag is created only after package test passes

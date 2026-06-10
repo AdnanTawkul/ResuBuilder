@@ -4,6 +4,14 @@ from dataclasses import dataclass
 import re
 
 
+PAGE_BREAK_MARKER = "<!-- RESUBUILDER_PAGE_BREAK -->"
+
+
+def is_page_break_marker(line: str) -> bool:
+    stripped = line.strip()
+    return stripped in {PAGE_BREAK_MARKER, "[[PAGE_BREAK]]", "<!-- PAGE_BREAK -->"}
+
+
 @dataclass(frozen=True)
 class MarkdownSection:
     heading: str
@@ -90,3 +98,55 @@ def reorder_markdown_sections(content: str, desired_order: list[str]) -> str:
         parts.append(prefix.strip())
     parts.extend(section.text.strip() for section in ordered if section.text.strip())
     return "\n\n".join(parts).strip() + "\n"
+
+
+
+def insert_page_break_after_section(content: str, heading: str) -> str:
+    """Insert a manual PDF page break marker after a level-2 section.
+
+    The marker is stored in the Markdown source and interpreted by the PDF
+    exporter. It is intentionally plain text/HTML-comment style so saved
+    workspaces remain portable and easy to inspect.
+    """
+    normalized = content.replace("\r\n", "\n").replace("\r", "\n")
+    lines = normalized.splitlines()
+    if not lines or not heading.strip():
+        return content
+
+    target = _clean_heading(heading)
+    section_start: int | None = None
+    for index, line in enumerate(lines):
+        match = _H2_RE.match(line.strip())
+        if match and _clean_heading(match.group(1)) == target:
+            section_start = index
+            break
+
+    if section_start is None:
+        return content
+
+    insert_at = len(lines)
+    for index in range(section_start + 1, len(lines)):
+        if _H2_RE.match(lines[index].strip()):
+            insert_at = index
+            break
+
+    # Do not insert duplicate page breaks after the same section.
+    previous_index = insert_at - 1
+    while previous_index >= 0 and not lines[previous_index].strip():
+        previous_index -= 1
+    if previous_index >= 0 and is_page_break_marker(lines[previous_index]):
+        return normalized.rstrip() + "\n"
+
+    marker_block = ["", PAGE_BREAK_MARKER, ""]
+    updated = lines[:insert_at] + marker_block + lines[insert_at:]
+    return "\n".join(updated).rstrip() + "\n"
+
+
+def remove_page_break_markers(content: str) -> str:
+    """Remove manual page break markers from a generated document."""
+    normalized = content.replace("\r\n", "\n").replace("\r", "\n")
+    kept = [line for line in normalized.splitlines() if not is_page_break_marker(line)]
+    # Collapse excessive blank lines left by marker removal.
+    text = "\n".join(kept)
+    text = re.sub(r"\n{4,}", "\n\n\n", text)
+    return text.rstrip() + "\n" if text.strip() else ""

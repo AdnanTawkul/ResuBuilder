@@ -5,11 +5,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .app_paths import data_dir, settings_path
 
-
-DATA_DIR = data_dir()
-SETTINGS_PATH = settings_path()
+DATA_DIR = Path("data")
+SETTINGS_PATH = DATA_DIR / "settings.json"
 
 
 @dataclass
@@ -24,11 +22,10 @@ class AppSettings:
     openai_model: str = "gpt-4.1-mini"
     generation_mode: str = "Balanced"
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "qwen3:8b"
+    ollama_model: str = "qwen3:14b"
     timeout_seconds: int = 120
     last_workspace_dir: str = ""
     last_export_dir: str = ""
-    output_language: str = "English"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AppSettings":
@@ -61,10 +58,6 @@ class AppSettings:
         if page_size not in {"A4", "Letter"}:
             page_size = defaults.pdf_page_size
 
-        output_language = str(data.get("output_language", defaults.output_language) or defaults.output_language)
-        if output_language not in {"English", "German"}:
-            output_language = defaults.output_language
-
         return cls(
             schema_version=int(data.get("schema_version", defaults.schema_version) or defaults.schema_version),
             ui_theme=theme,
@@ -80,7 +73,6 @@ class AppSettings:
             timeout_seconds=timeout,
             last_workspace_dir=str(data.get("last_workspace_dir", defaults.last_workspace_dir) or defaults.last_workspace_dir),
             last_export_dir=str(data.get("last_export_dir", defaults.last_export_dir) or defaults.last_export_dir),
-            output_language=output_language,
         )
 
     def to_dict(self) -> dict[str, Any]:

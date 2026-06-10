@@ -94,3 +94,17 @@
 [2026-06-10 13:09:20] Generation finished: job_id=1, chars=4487
 [2026-06-10 13:10:21] AI quality review started: job_id=1, type=CV
 [2026-06-10 13:10:35] AI quality review finished: job_id=1, chars=2720
+[2026-06-10 17:30:33] Job fit analysis started: job_id=1, model=qwen3:14b
+[2026-06-10 17:30:51] Job fit analysis finished: job_id=1, chars=2735
+[2026-06-10 17:33:24] Generation started: job_id=1, type=CV, provider=Ollama Local, model=qwen3:14b
+[2026-06-10 17:33:49] Generation finished: job_id=1, chars=4588
+[2026-06-10 17:36:43] Generation started: job_id=2, type=Covering Letter, provider=Ollama Local, model=qwen3:14b
+[2026-06-10 17:36:55] Generation finished: job_id=2, chars=1767
+[2026-06-10 17:37:10] AI quality review started: job_id=1, type=CV
+[2026-06-10 17:37:24] AI quality review finished: job_id=1, chars=2613
+[2026-06-10 17:37:34] Quality improvement started: job_id=1, type=CV
+[2026-06-10 17:37:59] Quality improvement finished: job_id=1, chars=4208
+[2026-06-10 17:58:18] Manual AI edit started: job_id=1, type=CV
+[2026-06-10 17:58:45] Quality improvement finished: job_id=1, chars=4237
+[2026-06-10 18:00:37] Manual AI edit started: job_id=2, type=CV
+[2026-06-10 18:01:00] Quality improvement finished: job_id=2, chars=4253

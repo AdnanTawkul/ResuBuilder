@@ -12,6 +12,5 @@
   "ollama_model": "qwen3:14b",
   "timeout_seconds": 120,
   "last_workspace_dir": "G:\\Python\\ResuBuilder\\ResuBuilder\\data\\applications",
-  "last_export_dir": "G:\\Python\\ResuBuilder\\ResuBuilder\\exports",
-  "output_language": "English"
+  "last_export_dir": "G:\\Python\\ResuBuilder\\ResuBuilder\\exports"
 }
