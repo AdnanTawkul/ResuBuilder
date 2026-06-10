@@ -49,6 +49,7 @@ from .models import AISettings, CandidateProfile, GenerationRequest
 from .application_package_exporter import export_application_package
 from .pdf_exporter import export_markdown_to_pdf
 from .pdf_templates import get_pdf_template_names
+from .document_layout import extract_markdown_sections, reorder_markdown_sections
 from .quality_checker import analyze_document, format_quality_report
 from .settings_manager import AppSettings, load_app_settings, save_app_settings
 from .app_paths import applications_dir, data_dir, exports_dir, logs_dir, profile_path
@@ -1603,6 +1604,7 @@ class ResuBuilderQtApp(QMainWindow):
 
         self.export_document_combo = QComboBox()
         self.export_document_combo.addItems(["CV", "Covering Letter"])
+        self.export_document_combo.currentTextChanged.connect(lambda _value: self._refresh_section_order_list())
 
         self.export_pdf_template_combo = QComboBox()
         self.export_pdf_template_combo.addItems(get_pdf_template_names())
@@ -1651,6 +1653,53 @@ class ResuBuilderQtApp(QMainWindow):
 
         settings_card.layout.addLayout(settings_grid)
         content_layout.addWidget(settings_card)
+
+        layout_card = Card(
+            "Template preview and section order",
+            "Preview the selected document and reorder top-level sections before export. PDF export keeps project-style subsections together where possible.",
+        )
+        layout_card.setMinimumHeight(360)
+        layout_grid = QGridLayout()
+        layout_grid.setHorizontalSpacing(18)
+        layout_grid.setVerticalSpacing(14)
+        layout_grid.setColumnStretch(0, 2)
+        layout_grid.setColumnStretch(1, 1)
+
+        self.section_order_list = QListWidget()
+        self.section_order_list.setMinimumHeight(220)
+        layout_grid.addWidget(self.section_order_list, 0, 0, 4, 1)
+
+        refresh_sections_button = QPushButton("Refresh Sections")
+        refresh_sections_button.clicked.connect(self._refresh_section_order_list)
+        move_up_button = QPushButton("Move Up")
+        move_up_button.clicked.connect(lambda: self._move_section_order(-1))
+        move_down_button = QPushButton("Move Down")
+        move_down_button.clicked.connect(lambda: self._move_section_order(1))
+        apply_order_button = QPushButton("Apply Order to Document")
+        apply_order_button.setObjectName("PrimaryButton")
+        apply_order_button.clicked.connect(self._apply_section_order_to_document)
+        preview_button = QPushButton("Preview Ordered Document")
+        preview_button.clicked.connect(self._preview_ordered_document)
+
+        for button in (refresh_sections_button, move_up_button, move_down_button, apply_order_button, preview_button):
+            button.setMinimumHeight(42)
+
+        layout_grid.addWidget(refresh_sections_button, 0, 1)
+        layout_grid.addWidget(move_up_button, 1, 1)
+        layout_grid.addWidget(move_down_button, 2, 1)
+        layout_grid.addWidget(apply_order_button, 3, 1)
+        layout_grid.addWidget(preview_button, 4, 1)
+
+        layout_tip = QLabel(
+            "Tip: keep project entries under ### headings. The PDF exporter tries to keep each project block together so descriptions are less likely to split across pages."
+        )
+        layout_tip.setObjectName("CardText")
+        layout_tip.setWordWrap(True)
+        layout_grid.addWidget(layout_tip, 4, 0)
+
+        layout_card.layout.addLayout(layout_grid)
+        content_layout.addWidget(layout_card)
+        self._refresh_section_order_list()
 
         actions_card = Card("Export actions", "Export one document for quick testing, or export the full application package when both documents are ready.")
         actions_card.setMinimumHeight(160)
@@ -2029,7 +2078,7 @@ class ResuBuilderQtApp(QMainWindow):
             "structured_evidence": self._structured_evidence_text(),
             "job_details": self._job_details_dict(),
             "job_description": self._combined_job_brief(),
-            "generated_cv": self.generated_cv,
+            "generated_cv": self._document_with_current_section_order(self.generated_cv) if hasattr(self, "section_order_list") else self.generated_cv,
             "generated_covering_letter": self.generated_covering_letter,
             "quality_report": self._quality_report_text(),
             "ai_quality_review": self.ai_quality_review,
@@ -2041,6 +2090,7 @@ class ResuBuilderQtApp(QMainWindow):
                 "output_language": self._selected_output_language(),
                 "review_document": self.review_document_combo.currentText() if hasattr(self, "review_document_combo") else "CV",
                 "export_document": self.export_document_combo.currentText() if hasattr(self, "export_document_combo") else "CV",
+                "cv_section_order": self._current_section_order() if hasattr(self, "section_order_list") else [],
             },
             "settings": {
                 "provider": self.app_settings.ai_provider,
@@ -2277,6 +2327,8 @@ class ResuBuilderQtApp(QMainWindow):
             self.review_document_combo.setCurrentText(str(ui_state.get("review_document")))
         if ui_state.get("export_document"):
             self.export_document_combo.setCurrentText(str(ui_state.get("export_document")))
+        if hasattr(self, "section_order_list"):
+            self._refresh_section_order_list(ui_state.get("cv_section_order") or None)
         settings = snapshot.get("settings") or {}
         if settings.get("pdf_template"):
             self.export_pdf_template_combo.setCurrentText(str(settings.get("pdf_template")))
@@ -2831,6 +2883,8 @@ class ResuBuilderQtApp(QMainWindow):
         else:
             self.generated_covering_letter = text
         self.output_edit.setPlainText(text)
+        if document_type == "CV" and hasattr(self, "section_order_list"):
+            self._refresh_section_order_list()
         self.status_label.setText(f"{document_type} generated. Verify every claim, then run Review > Quality Check.")
         self._update_workspace_status(f"{document_type} generated. Save the workspace to preserve this output.")
 
@@ -2888,6 +2942,8 @@ class ResuBuilderQtApp(QMainWindow):
             QMessageBox.information(self, "No generated document", f"Generate a {document_type} before reviewing it.")
             return
         self.output_edit.setPlainText(text)
+        if document_type == "CV" and hasattr(self, "section_order_list"):
+            self._refresh_section_order_list()
         self.document_type_combo.setCurrentText(document_type)
         self.show_page("Generate")
 
@@ -3195,6 +3251,8 @@ class ResuBuilderQtApp(QMainWindow):
         else:
             self.generated_covering_letter = text
         self.output_edit.setPlainText(text)
+        if document_type == "CV" and hasattr(self, "section_order_list"):
+            self._refresh_section_order_list()
         self.document_type_combo.setCurrentText(document_type)
         self.review_document_combo.setCurrentText(document_type)
         reason = getattr(self, "_improvement_reason", "quality fixes")
@@ -3220,8 +3278,104 @@ class ResuBuilderQtApp(QMainWindow):
     def _selected_export_document_text(self) -> tuple[str, str]:
         document_type = self.export_document_combo.currentText() if hasattr(self, "export_document_combo") else "CV"
         if document_type == "CV":
+            return document_type, self._document_with_current_section_order(self.generated_cv)
+        return document_type, self.generated_covering_letter
+
+    def _raw_selected_export_document_text(self) -> tuple[str, str]:
+        document_type = self.export_document_combo.currentText() if hasattr(self, "export_document_combo") else "CV"
+        if document_type == "CV":
             return document_type, self.generated_cv
         return document_type, self.generated_covering_letter
+
+    def _current_section_order(self) -> list[str]:
+        if not hasattr(self, "section_order_list"):
+            return []
+        return [self.section_order_list.item(index).text() for index in range(self.section_order_list.count())]
+
+    def _document_with_current_section_order(self, text: str) -> str:
+        order = self._current_section_order()
+        if not order or not text.strip():
+            return text
+        return reorder_markdown_sections(text, order)
+
+    def _refresh_section_order_list(self, preferred_order: list[str] | None = None) -> None:
+        if not hasattr(self, "section_order_list"):
+            return
+        document_type, text = self._raw_selected_export_document_text() if hasattr(self, "export_document_combo") else ("CV", self.generated_cv)
+        self.section_order_list.clear()
+        if document_type != "CV":
+            self.section_order_list.addItem("Covering letters usually do not need section reordering.")
+            self.section_order_list.setEnabled(False)
+            return
+        self.section_order_list.setEnabled(True)
+        sections = extract_markdown_sections(text)
+        headings = [section.heading for section in sections]
+        if preferred_order:
+            preferred = [heading for heading in preferred_order if heading in headings]
+            headings = preferred + [heading for heading in headings if heading not in preferred]
+        if not headings:
+            self.section_order_list.addItem("No level-2 sections found yet. Generate a CV first.")
+            return
+        for heading in headings:
+            self.section_order_list.addItem(heading)
+
+    def _move_section_order(self, direction: int) -> None:
+        if not hasattr(self, "section_order_list") or not self.section_order_list.isEnabled():
+            return
+        row = self.section_order_list.currentRow()
+        if row < 0:
+            return
+        new_row = row + direction
+        if new_row < 0 or new_row >= self.section_order_list.count():
+            return
+        item = self.section_order_list.takeItem(row)
+        self.section_order_list.insertItem(new_row, item)
+        self.section_order_list.setCurrentRow(new_row)
+
+    def _apply_section_order_to_document(self) -> None:
+        document_type, text = self._raw_selected_export_document_text()
+        if document_type != "CV":
+            QMessageBox.information(self, "Section order", "Section reordering is intended for CV exports. Covering letters keep their paragraph order.")
+            return
+        if not text.strip():
+            QMessageBox.warning(self, "No CV generated", "Generate a CV before changing section order.")
+            return
+        updated = self._document_with_current_section_order(text)
+        self.generated_cv = updated
+        self.output_edit.setPlainText(updated)
+        self.document_type_combo.setCurrentText("CV")
+        self._refresh_section_order_list()
+        self.export_status_edit.setPlainText("CV section order applied. Run Review again if you changed the final layout substantially.")
+        self._update_workspace_status("CV section order updated. Save the workspace to preserve the layout.")
+
+    def _preview_ordered_document(self) -> None:
+        document_type, text = self._selected_export_document_text()
+        if not text.strip():
+            QMessageBox.warning(self, "Nothing to preview", f"Generate a {document_type} first.")
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"{document_type} Preview")
+        dialog.setModal(False)
+        dialog.resize(820, 720)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+        title = QLabel(f"Preview: {document_type} | Template: {self.export_pdf_template_combo.currentText()} | Page size: {self.export_page_size_combo.currentText()}")
+        title.setObjectName("CardTitle")
+        title.setWordWrap(True)
+        preview = QPlainTextEdit()
+        preview.setReadOnly(True)
+        preview.setPlainText(text)
+        close_row = QHBoxLayout()
+        close_row.addStretch(1)
+        close_button = QPushButton("Close")
+        close_button.setMinimumWidth(120)
+        close_button.clicked.connect(dialog.accept)
+        close_row.addWidget(close_button)
+        layout.addWidget(title)
+        layout.addWidget(preview, 1)
+        layout.addLayout(close_row)
+        dialog.exec()
 
     def _browse_export_dir(self) -> None:
         current = self.export_dir_edit.text().strip() if hasattr(self, "export_dir_edit") else str(exports_dir())
@@ -3341,7 +3495,7 @@ class ResuBuilderQtApp(QMainWindow):
             "profile": self._build_profile().__dict__,
             "job_details": self._job_details_dict(),
             "job_description": self._combined_job_brief(),
-            "generated_cv": self.generated_cv,
+            "generated_cv": self._document_with_current_section_order(self.generated_cv) if hasattr(self, "section_order_list") else self.generated_cv,
             "generated_covering_letter": self.generated_covering_letter,
             "quality_report": self._quality_report_text(),
             "ai_quality_review": self.ai_quality_review,
@@ -3358,7 +3512,7 @@ class ResuBuilderQtApp(QMainWindow):
             package_dir = export_application_package(
                 export_root=export_root,
                 metadata=metadata,
-                cv_markdown=self.generated_cv,
+                cv_markdown=self._document_with_current_section_order(self.generated_cv) if hasattr(self, "section_order_list") else self.generated_cv,
                 covering_letter_markdown=self.generated_covering_letter,
                 quality_report_markdown=self._quality_report_text(),
                 application_snapshot=snapshot,

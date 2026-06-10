@@ -1,28 +1,54 @@
 # ResuBuilder Qt Primary Migration
 
-ResuBuilder now uses the PySide6/Qt interface as the primary app shell.
+The PySide6/Qt GUI is now the primary ResuBuilder interface.
 
-Run the main app:
+## Run the main app
 
 ```bash
 python app.py
 ```
 
-Run the legacy GUI only if you need a fallback:
+## Run the legacy Tkinter GUI
 
 ```bash
 python app_legacy.py
 ```
 
-The legacy GUI should stay available until the Windows package has passed full testing.
+## Keep temporarily
 
-## Current status
+Do not delete the legacy GUI yet:
 
-- Qt interface is primary
-- Legacy GUI is retained as backup
-- Windows packaging preparation has started
-- Do not delete legacy files yet
+```text
+src/resume_ai/gui.py
+app_legacy.py
+```
 
-## Step 26B cleanup
+Keep it until the Qt version has been used through several full test applications without workflow regressions.
 
-Removed remaining user-facing experimental labels from the primary Qt app, including the sidebar notice and About dialog wording.
+## Main verification flow
+
+1. Load or create a workspace.
+2. Load saved profile.
+3. Add structured evidence.
+4. Fill the structured Job page.
+5. Analyze job fit.
+6. Generate CV.
+7. Generate covering letter.
+8. Run quality check.
+9. Run AI quality review.
+10. Improve with quality fixes.
+11. Export selected PDFs.
+12. Export application package.
+13. Save workspace.
+14. Close and reopen the app.
+15. Reload workspace and confirm all data is restored.
+
+## GitHub guidance
+
+Recommended commit:
+
+```text
+Make PySide6 GUI the primary app entry point
+```
+
+Keep this on the Qt experiment branch until you are ready to merge into `main`.

@@ -1,4 +1,4 @@
-# PySide6 GUI Roadmap
+# PySide6 GUI Experiment Roadmap
 
 ## Done
 
@@ -28,7 +28,7 @@
 
 ## Step 24J, Qt Evidence Builder
 
-- Added Evidence page to the Qt interface.
+- Added Evidence page to the Qt experiment.
 - Added structured evidence fields and actions.
 - Saves and restores evidence through profile JSON and workspace JSON.
 - Passes structured evidence into generation via `CandidateProfile.structured_evidence`.
@@ -43,7 +43,7 @@
 
 ## Step 24L quiet dialog update
 
-The Qt interface now uses custom silent confirmation and information dialogs instead of native QMessageBox convenience windows. This prevents Windows notification sounds when saving workspaces, loading profiles, exporting files, or showing validation messages.
+The Qt experiment now uses custom silent confirmation and information dialogs instead of native QMessageBox convenience windows. This prevents Windows notification sounds when saving workspaces, loading profiles, exporting files, or showing validation messages.
 
 
 ## Step 24M - Qt Job Fit Analyzer inside Generate
@@ -127,9 +127,9 @@ The Qt menu bar now matches the simpler legacy structure with only File, Setting
 - Menu item padding was increased so labels such as Restore App Settings do not get clipped.
 - The menu polish applies across Light, Dark, and Dark blue themes.
 
-## Step 24Z. Modern 3D theme
+## Step 24Z. Modern 3D theme experiment
 
-Status: implemented in the PySide6 interface.
+Status: implemented in the PySide6 experiment branch.
 
 Changes:
 
@@ -150,8 +150,3 @@ Next check:
 ### Step 24AB . Rounded scrollbar handle polish
 - Force vertical and horizontal scrollbar handles to render as rounded pill controls.
 - Keep existing theme-specific colors and gradients.
-
-## Step 26C
-
-- Improved profile/workspace load behavior for packaged builds.
-- Replaced the project-specific default evidence example with a generic example.

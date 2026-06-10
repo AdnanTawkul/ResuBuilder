@@ -10,6 +10,7 @@ from reportlab.lib.pagesizes import A4, letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import (
     HRFlowable,
+    KeepTogether,
     ListFlowable,
     ListItem,
     Paragraph,
@@ -32,7 +33,7 @@ def export_markdown_to_pdf(
     page_size: str = "A4",
     template_name: str = "ATS Friendly",
 ) -> Path:
-    """Export the generated Markdown-like CV/resume output to a styled PDF.
+    """Export generated Markdown-like CV/covering-letter output to a styled PDF.
 
     Supported Markdown subset:
     - #, ##, and ### headings
@@ -40,8 +41,12 @@ def export_markdown_to_pdf(
     - paragraphs
     - bullet lists beginning with -, *, or •
 
-    The limited subset is deliberate. Resume PDFs need predictable layout more
-    than full Markdown support.
+    Layout behavior:
+    - ### subsection blocks, such as individual project descriptions, are kept
+      together where possible so a short project block is not split awkwardly
+      across two pages.
+    - Very large blocks are allowed to split because forcing a block larger than
+      one page would create worse PDF layout failures.
     """
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -57,8 +62,8 @@ def export_markdown_to_pdf(
         leftMargin=template.left_margin,
         topMargin=template.top_margin,
         bottomMargin=template.bottom_margin,
-        title="Tailored CV or Resume",
-        author="Resume AI 2",
+        title="ResuBuilder document",
+        author="ResuBuilder",
     )
     doc.build(story)
     return path
@@ -145,60 +150,109 @@ def _build_story(
     styles: dict[str, ParagraphStyle],
     template: PDFTemplateConfig,
 ) -> list:
-    story: list = []
     lines = _normalize_content(content).splitlines()
+    if not any(line.strip() for line in lines):
+        return [Paragraph("No content to export.", styles["body"])]
+
+    story: list = []
     index = 0
-
     while index < len(lines):
-        raw_line = lines[index]
-        line = raw_line.strip()
-
-        if not line:
-            story.append(Spacer(1, 2 if template.compact else 4))
+        line = lines[index].strip()
+        if line.startswith("### "):
+            chunk_lines = [lines[index]]
             index += 1
-            continue
-
-        if _is_bullet(line):
-            bullet_lines = []
-            while index < len(lines) and _is_bullet(lines[index].strip()):
-                bullet_lines.append(_strip_bullet(lines[index].strip()))
+            while index < len(lines) and not _starts_new_block(lines[index].strip()):
+                chunk_lines.append(lines[index])
                 index += 1
-            story.append(_make_bullet_list(bullet_lines, styles["bullet"], template))
-            story.append(Spacer(1, 1 if template.compact else 3))
+            flowables = _build_story_linear(chunk_lines, styles, template)
+            if _should_keep_together(chunk_lines):
+                story.append(KeepTogether(flowables))
+            else:
+                story.extend(flowables)
             continue
 
-        if line.startswith("# "):
-            heading = _clean_generated_heading(line[2:].strip())
-            story.append(Paragraph(_inline_markup(heading), styles["h1"]))
-        elif line.startswith("## "):
-            heading = line[3:].strip()
-            if _looks_like_name_heading(heading, story):
-                story.append(Paragraph(_inline_markup(heading), styles["h1"]))
-            else:
-                section_text = heading.upper() if template.section_uppercase else heading
-                story.append(Paragraph(_inline_markup(section_text), styles["h2"]))
-                if template.section_line:
-                    story.append(
-                        HRFlowable(
-                            width="100%",
-                            thickness=0.6,
-                            color=template.primary_color,
-                            spaceBefore=0,
-                            spaceAfter=4 if template.compact else 6,
-                        )
-                    )
-        elif line.startswith("### "):
-            story.append(Paragraph(_inline_markup(line[4:].strip()), styles["h3"]))
-        elif _looks_like_title_line(line):
-            story.append(Paragraph(_inline_markup(_strip_markdown_bold(line)), styles["subtitle"]))
-        elif _looks_like_contact_line(line):
-            story.append(Paragraph(_inline_markup(line), styles["contact"]))
-        else:
-            story.append(Paragraph(_inline_markup(line), styles["body"]))
-
-        index += 1
+        flowables, index = _consume_one_block(lines, index, styles, template)
+        story.extend(flowables)
 
     return story or [Paragraph("No content to export.", styles["body"])]
+
+
+def _build_story_linear(
+    lines: list[str],
+    styles: dict[str, ParagraphStyle],
+    template: PDFTemplateConfig,
+) -> list:
+    story: list = []
+    index = 0
+    while index < len(lines):
+        flowables, index = _consume_one_block(lines, index, styles, template)
+        story.extend(flowables)
+    return story
+
+
+def _consume_one_block(
+    lines: list[str],
+    index: int,
+    styles: dict[str, ParagraphStyle],
+    template: PDFTemplateConfig,
+) -> tuple[list, int]:
+    raw_line = lines[index]
+    line = raw_line.strip()
+    flowables: list = []
+
+    if not line:
+        flowables.append(Spacer(1, 2 if template.compact else 4))
+        return flowables, index + 1
+
+    if _is_bullet(line):
+        bullet_lines = []
+        while index < len(lines) and _is_bullet(lines[index].strip()):
+            bullet_lines.append(_strip_bullet(lines[index].strip()))
+            index += 1
+        flowables.append(_make_bullet_list(bullet_lines, styles["bullet"], template))
+        flowables.append(Spacer(1, 1 if template.compact else 3))
+        return flowables, index
+
+    if line.startswith("# "):
+        heading = _clean_generated_heading(line[2:].strip())
+        flowables.append(Paragraph(_inline_markup(heading), styles["h1"]))
+    elif line.startswith("## "):
+        heading = line[3:].strip()
+        if _looks_like_name_heading(heading, flowables):
+            flowables.append(Paragraph(_inline_markup(heading), styles["h1"]))
+        else:
+            section_text = heading.upper() if template.section_uppercase else heading
+            flowables.append(Paragraph(_inline_markup(section_text), styles["h2"]))
+            if template.section_line:
+                flowables.append(
+                    HRFlowable(
+                        width="100%",
+                        thickness=0.6,
+                        color=template.primary_color,
+                        spaceBefore=0,
+                        spaceAfter=4 if template.compact else 6,
+                    )
+                )
+    elif line.startswith("### "):
+        flowables.append(Paragraph(_inline_markup(line[4:].strip()), styles["h3"]))
+    elif _looks_like_title_line(line):
+        flowables.append(Paragraph(_inline_markup(_strip_markdown_bold(line)), styles["subtitle"]))
+    elif _looks_like_contact_line(line):
+        flowables.append(Paragraph(_inline_markup(line), styles["contact"]))
+    else:
+        flowables.append(Paragraph(_inline_markup(line), styles["body"]))
+
+    return flowables, index + 1
+
+
+def _starts_new_block(line: str) -> bool:
+    return line.startswith("# ") or line.startswith("## ") or line.startswith("### ")
+
+
+def _should_keep_together(lines: list[str]) -> bool:
+    content_lines = [line for line in lines if line.strip()]
+    # Keep typical project entries together, but do not force very large blocks.
+    return 1 < len(content_lines) <= 12
 
 
 def _make_bullet_list(
@@ -222,7 +276,6 @@ def _make_bullet_list(
 
 
 def _normalize_content(content: str) -> str:
-    # ReportLab's built-in fonts are safest with simple ASCII punctuation.
     return (
         content.replace("\u2013", "-")
         .replace("\u2014", "-")
@@ -243,8 +296,6 @@ def _strip_bullet(line: str) -> str:
 
 
 def _looks_like_name_heading(heading: str, story: list) -> bool:
-    # Local drafts currently output "# Tailored Resume" followed by "## Name".
-    # Treat the first level-2 heading after the title as the candidate name.
     if not story:
         return False
     lowered = heading.lower()
@@ -256,15 +307,13 @@ def _looks_like_name_heading(heading: str, story: list) -> bool:
         "projects",
         "education",
         "languages",
+        "links",
         "tailoring notes",
     }
     return len(story) <= 3 and lowered not in forbidden and len(heading.split()) <= 5
 
 
 def _clean_generated_heading(heading: str) -> str:
-    lowered = heading.lower().strip()
-    if lowered in {"tailored resume", "tailored cv", "resume", "cv"}:
-        return heading
     return heading
 
 
