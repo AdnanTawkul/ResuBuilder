@@ -83,6 +83,8 @@ OPENAI_MODEL_OPTIONS = [
     "gpt-4o",
 ]
 
+OUTPUT_LANGUAGE_OPTIONS = ["English", "German"]
+
 
 class QMessageBox:
     """Silent replacement for QMessageBox convenience dialogs.
@@ -584,6 +586,8 @@ class ResuBuilderQtApp(QMainWindow):
         self.settings_template_combo.setCurrentText(getattr(self.app_settings, "template_name", "ATS Friendly"))
         self.settings_pdf_template_combo.setCurrentText(getattr(self.app_settings, "pdf_template", "ATS Friendly"))
         self.settings_page_size_combo.setCurrentText(getattr(self.app_settings, "pdf_page_size", "A4"))
+        if hasattr(self, "settings_output_language_combo"):
+            self.settings_output_language_combo.setCurrentText(getattr(self.app_settings, "output_language", "English"))
         self.settings_workspace_dir_edit.setText(getattr(self.app_settings, "last_workspace_dir", "") or str(applications_dir()))
         self.settings_export_dir_edit.setText(getattr(self.app_settings, "last_export_dir", "") or str(exports_dir()))
         self.settings_theme_combo.setCurrentText(self._normalized_theme(getattr(self.app_settings, "ui_theme", "Dark blue")))
@@ -685,11 +689,15 @@ class ResuBuilderQtApp(QMainWindow):
         page_size_combo = QComboBox()
         page_size_combo.addItems(["A4", "Letter"])
         page_size_combo.setCurrentText(getattr(self.app_settings, "pdf_page_size", "A4"))
-        for widget in (template_combo, pdf_template_combo, page_size_combo):
+        language_combo = QComboBox()
+        language_combo.addItems(OUTPUT_LANGUAGE_OPTIONS)
+        language_combo.setCurrentText(getattr(self.app_settings, "output_language", "English"))
+        for widget in (template_combo, pdf_template_combo, page_size_combo, language_combo):
             self._prepare_form_control(widget, min_width=340)
         self._add_labeled_field(doc_grid, 0, 0, "Generation template", template_combo)
-        self._add_labeled_field(doc_grid, 0, 1, "PDF template", pdf_template_combo)
-        self._add_labeled_field(doc_grid, 1, 0, "PDF page size", page_size_combo)
+        self._add_labeled_field(doc_grid, 0, 1, "Output language", language_combo)
+        self._add_labeled_field(doc_grid, 1, 0, "PDF template", pdf_template_combo)
+        self._add_labeled_field(doc_grid, 1, 1, "PDF page size", page_size_combo)
         doc_card.layout.addLayout(doc_grid)
         content_layout.addWidget(doc_card)
 
@@ -737,6 +745,7 @@ class ResuBuilderQtApp(QMainWindow):
             self.app_settings.openai_model = openai_model_combo.currentText().strip() or "gpt-4.1-mini"
             self.app_settings.timeout_seconds = int(timeout_spin.value())
             self.app_settings.template_name = template_combo.currentText()
+            self.app_settings.output_language = language_combo.currentText()
             self.app_settings.pdf_template = pdf_template_combo.currentText()
             self.app_settings.pdf_page_size = page_size_combo.currentText()
             self.app_settings.last_workspace_dir = workspace_dir_edit.text().strip()
@@ -792,6 +801,7 @@ class ResuBuilderQtApp(QMainWindow):
             "Settings menu:\n"
             "- Open Settings opens a standalone settings window.\n"
             "- UI Theme changes the interface quickly.\n"
+            "- Output language controls whether generated documents are written in English or German.\n"
             "- Save App Settings writes current settings to data/settings.json.\n"
             "- Restore App Settings resets defaults.\n\n"
             "Help menu:\n"
@@ -1378,6 +1388,11 @@ class ResuBuilderQtApp(QMainWindow):
             if index >= 0:
                 self.template_combo.setCurrentIndex(index)
 
+        self.output_language_combo = QComboBox()
+        self.output_language_combo.addItems(OUTPUT_LANGUAGE_OPTIONS)
+        self.output_language_combo.setCurrentText(getattr(self.app_settings, "output_language", "English"))
+        self.output_language_combo.setToolTip("Choose the language used for generated CVs and covering letters. German output is translated by the selected AI provider.")
+
         self.generate_button = QPushButton("Generate Document")
         self.generate_button.setObjectName("PrimaryButton")
         self.generate_button.setMinimumHeight(48)
@@ -1386,9 +1401,11 @@ class ResuBuilderQtApp(QMainWindow):
 
         self._prepare_form_control(self.document_type_combo, min_width=240)
         self._prepare_form_control(self.template_combo, min_width=280)
+        self._prepare_form_control(self.output_language_combo, min_width=240)
         self._add_labeled_field(controls_grid, 0, 0, "Document", self.document_type_combo)
         self._add_labeled_field(controls_grid, 0, 1, "Template", self.template_combo)
-        controls_grid.addWidget(self.generate_button, 0, 2, alignment=Qt.AlignmentFlag.AlignBottom)
+        self._add_labeled_field(controls_grid, 1, 0, "Output language", self.output_language_combo)
+        controls_grid.addWidget(self.generate_button, 1, 2, alignment=Qt.AlignmentFlag.AlignBottom)
         controls.layout.addLayout(controls_grid)
         content_layout.addWidget(controls)
 
@@ -1796,12 +1813,17 @@ class ResuBuilderQtApp(QMainWindow):
         self.settings_page_size_combo.addItems(["A4", "Letter"])
         self.settings_page_size_combo.setCurrentText(getattr(self.app_settings, "pdf_page_size", "A4"))
 
-        for widget in (self.settings_template_combo, self.settings_pdf_template_combo, self.settings_page_size_combo):
+        self.settings_output_language_combo = QComboBox()
+        self.settings_output_language_combo.addItems(OUTPUT_LANGUAGE_OPTIONS)
+        self.settings_output_language_combo.setCurrentText(getattr(self.app_settings, "output_language", "English"))
+
+        for widget in (self.settings_template_combo, self.settings_output_language_combo, self.settings_pdf_template_combo, self.settings_page_size_combo):
             self._prepare_form_control(widget, min_width=360)
 
         self._add_labeled_field(document_grid, 0, 0, "Generation template", self.settings_template_combo)
-        self._add_labeled_field(document_grid, 0, 1, "PDF template", self.settings_pdf_template_combo)
-        self._add_labeled_field(document_grid, 1, 0, "PDF page size", self.settings_page_size_combo)
+        self._add_labeled_field(document_grid, 0, 1, "Output language", self.settings_output_language_combo)
+        self._add_labeled_field(document_grid, 1, 0, "PDF template", self.settings_pdf_template_combo)
+        self._add_labeled_field(document_grid, 1, 1, "PDF page size", self.settings_page_size_combo)
         document_card.layout.addLayout(document_grid)
         content_layout.addWidget(document_card)
 
@@ -1934,6 +1956,29 @@ class ResuBuilderQtApp(QMainWindow):
             "requirements": self.job_requirements_edit.toPlainText().strip() if hasattr(self, "job_requirements_edit") else "",
         }
 
+    def _selected_output_language(self) -> str:
+        if hasattr(self, "output_language_combo"):
+            value = self.output_language_combo.currentText().strip()
+        else:
+            value = getattr(self.app_settings, "output_language", "English")
+        return value if value in OUTPUT_LANGUAGE_OPTIONS else "English"
+
+    def _language_instruction_block(self) -> str:
+        language = self._selected_output_language()
+        if language == "German":
+            return (
+                "Output language requirement:\n"
+                "Write the final CV or covering letter in German. Translate all necessary candidate, job, and evidence information into natural professional German. "
+                "Keep names, email addresses, phone numbers, URLs, company names, product names, programming languages, libraries, frameworks, model names, dates, degree names, and exact numbers unchanged unless a German wording is clearly standard. "
+                "Use formal professional German suitable for a job application. Do not explain that a translation was performed. Return only the final document text."
+            )
+        return "Output language requirement:\nWrite the final CV or covering letter in English."
+
+    def _combined_job_brief_for_generation(self) -> str:
+        base = self._combined_job_brief()
+        language_block = self._language_instruction_block()
+        return f"{language_block}\n\n{base}".strip()
+
     def _combined_job_brief(self) -> str:
         details = self._job_details_dict()
         sections: list[str] = []
@@ -1993,6 +2038,7 @@ class ResuBuilderQtApp(QMainWindow):
             "ui_state": {
                 "document_type": self.document_type_combo.currentText() if hasattr(self, "document_type_combo") else "CV",
                 "template_name": template_name,
+                "output_language": self._selected_output_language(),
                 "review_document": self.review_document_combo.currentText() if hasattr(self, "review_document_combo") else "CV",
                 "export_document": self.export_document_combo.currentText() if hasattr(self, "export_document_combo") else "CV",
             },
@@ -2001,6 +2047,7 @@ class ResuBuilderQtApp(QMainWindow):
                 "ollama_model": self.app_settings.ollama_model,
                 "openai_model": self.app_settings.openai_model,
                 "generation_mode": self.app_settings.generation_mode,
+                "output_language": self._selected_output_language(),
                 "pdf_template": pdf_template,
                 "pdf_page_size": pdf_page_size,
                 "export_dir": export_dir,
@@ -2090,6 +2137,8 @@ class ResuBuilderQtApp(QMainWindow):
             self.job_fit_edit.clear()
         if hasattr(self, "job_fit_status_label"):
             self.job_fit_status_label.setText("No job fit analysis yet. Generate without it only for quick tests.")
+        if hasattr(self, "output_language_combo"):
+            self.output_language_combo.setCurrentText(getattr(self.app_settings, "output_language", "English"))
         if hasattr(self, "output_edit"):
             self.output_edit.clear()
         if hasattr(self, "quality_report_edit"):
@@ -2220,6 +2269,10 @@ class ResuBuilderQtApp(QMainWindow):
         ui_state = snapshot.get("ui_state") or {}
         if ui_state.get("template_name"):
             self.template_combo.setCurrentText(str(ui_state.get("template_name")))
+        if ui_state.get("output_language") and hasattr(self, "output_language_combo"):
+            self.output_language_combo.setCurrentText(str(ui_state.get("output_language")))
+        elif (snapshot.get("settings") or {}).get("output_language") and hasattr(self, "output_language_combo"):
+            self.output_language_combo.setCurrentText(str((snapshot.get("settings") or {}).get("output_language")))
         if ui_state.get("review_document"):
             self.review_document_combo.setCurrentText(str(ui_state.get("review_document")))
         if ui_state.get("export_document"):
@@ -2735,7 +2788,7 @@ class ResuBuilderQtApp(QMainWindow):
         document_type = self.document_type_combo.currentText()
         request = GenerationRequest(
             profile=self._build_profile(),
-            job_description=self._combined_job_brief(),
+            job_description=self._combined_job_brief_for_generation(),
             template_name=self.template_combo.currentText(),
             document_type=document_type,
             ai_settings=self._settings_to_ai_settings(),
@@ -2749,7 +2802,7 @@ class ResuBuilderQtApp(QMainWindow):
         self._generation_job_id += 1
         job_id = self._generation_job_id
         self.generate_button.setEnabled(False)
-        self.status_label.setText(f"Generating {document_type} with {request.ai_settings.provider} / {request.ai_settings.ollama_model}...")
+        self.status_label.setText(f"Generating {document_type} in {self._selected_output_language()} with {request.ai_settings.provider} / {request.ai_settings.ollama_model}...")
         self.output_edit.setPlainText("Working. Do not close the app. Local AI can take a while on the first run.")
         self._write_qt_log(f"Generation started: job_id={job_id}, type={document_type}, provider={request.ai_settings.provider}, model={request.ai_settings.ollama_model}")
 
@@ -2878,7 +2931,7 @@ class ResuBuilderQtApp(QMainWindow):
     def _build_review_generation_request(self, document_type: str) -> GenerationRequest:
         return GenerationRequest(
             profile=self._build_profile(),
-            job_description=self._combined_job_brief(),
+            job_description=self._combined_job_brief_for_generation(),
             template_name=self.template_combo.currentText() if hasattr(self, "template_combo") else "ATS Friendly",
             document_type=document_type,
             ai_settings=self._settings_to_ai_settings(),
@@ -3296,6 +3349,7 @@ class ResuBuilderQtApp(QMainWindow):
             "settings": {
                 "provider": self.app_settings.ai_provider,
                 "ollama_model": self.app_settings.ollama_model,
+                "output_language": self._selected_output_language(),
                 "pdf_template": template,
                 "pdf_page_size": page_size,
             },
@@ -3374,6 +3428,10 @@ class ResuBuilderQtApp(QMainWindow):
             self.app_settings.timeout_seconds = int(self.settings_timeout_spin.value())
         if hasattr(self, "settings_template_combo"):
             self.app_settings.template_name = self.settings_template_combo.currentText()
+        if hasattr(self, "settings_output_language_combo"):
+            self.app_settings.output_language = self.settings_output_language_combo.currentText()
+        elif hasattr(self, "output_language_combo"):
+            self.app_settings.output_language = self.output_language_combo.currentText()
         if hasattr(self, "settings_pdf_template_combo"):
             self.app_settings.pdf_template = self.settings_pdf_template_combo.currentText()
         if hasattr(self, "settings_page_size_combo"):
@@ -3388,6 +3446,8 @@ class ResuBuilderQtApp(QMainWindow):
     def _apply_settings_to_existing_controls(self) -> None:
         if hasattr(self, "template_combo"):
             self.template_combo.setCurrentText(getattr(self.app_settings, "template_name", "ATS Friendly"))
+        if hasattr(self, "output_language_combo"):
+            self.output_language_combo.setCurrentText(getattr(self.app_settings, "output_language", "English"))
         if hasattr(self, "export_pdf_template_combo"):
             self.export_pdf_template_combo.setCurrentText(getattr(self.app_settings, "pdf_template", "ATS Friendly"))
         if hasattr(self, "export_page_size_combo"):
@@ -3417,6 +3477,8 @@ class ResuBuilderQtApp(QMainWindow):
             self.settings_template_combo.setCurrentText(getattr(self.app_settings, "template_name", "ATS Friendly"))
             self.settings_pdf_template_combo.setCurrentText(getattr(self.app_settings, "pdf_template", "ATS Friendly"))
             self.settings_page_size_combo.setCurrentText(getattr(self.app_settings, "pdf_page_size", "A4"))
+            if hasattr(self, "settings_output_language_combo"):
+                self.settings_output_language_combo.setCurrentText(getattr(self.app_settings, "output_language", "English"))
             self.settings_workspace_dir_edit.setText(getattr(self.app_settings, "last_workspace_dir", "") or str(applications_dir()))
             self.settings_export_dir_edit.setText(getattr(self.app_settings, "last_export_dir", "") or str(exports_dir()))
             self.settings_theme_combo.setCurrentText(self._normalized_theme(getattr(self.app_settings, "ui_theme", "Dark blue")))
