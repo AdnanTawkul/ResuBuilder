@@ -19,7 +19,7 @@ class AIService:
     PROVIDER_OLLAMA = "Ollama Local"
 
     DEFAULT_OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini"
-    DEFAULT_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:14b").strip() or "qwen3:14b"
+    DEFAULT_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b").strip() or "qwen3:8b"
     DEFAULT_OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").strip() or "http://localhost:11434"
 
     def __init__(self) -> None:
@@ -99,6 +99,7 @@ class AIService:
         supported_signals, unsupported_signals = split_keywords_by_candidate_evidence(job_signals, profile)
         evidence_map = self._build_evidence_map(profile, job_signals)
         truth_aware_signal_report = build_truth_aware_signal_report(profile, job_description, limit=28)
+        project_candidate_summary = self._project_candidate_summary(profile)
 
         instructions = """
 /no_think
@@ -166,6 +167,9 @@ Professions / work experience:
 
 Projects:
 {profile.projects}
+
+Project candidates and selection notes:
+{project_candidate_summary}
 
 Skills:
 {profile.skills}
@@ -615,7 +619,12 @@ CV guidance:
 - Every bullet should contain an action, a tool/method/domain detail, and a business or technical purpose where truthful.
 - Remove weak, irrelevant, repetitive, or outdated information.
 - Make the first third of the document the strongest part.
+- Apply the project-selection rules below. Do not dump every project into the CV.
 """.strip()
+
+        project_selection_guidance = self._project_selection_guidance(request)
+        project_candidate_summary = self._project_candidate_summary(profile)
+        skill_selection_guidance = self._skill_selection_guidance(request)
 
         instructions = f"""
 /no_think
@@ -635,6 +644,12 @@ Hard rules:
 
 Document-specific guidance:
 {document_guidance}
+
+Project-selection rules:
+{project_selection_guidance}
+
+Skill-selection rules:
+{skill_selection_guidance}
 
 Required structure:
 {required_structure}
@@ -686,7 +701,16 @@ Professions / work experience:
 Projects:
 {profile.projects}
 
-Skills:
+Project candidates and selection notes:
+{project_candidate_summary}
+
+Project-selection rules:
+{project_selection_guidance}
+
+Skill-selection rules:
+{skill_selection_guidance}
+
+Skills inventory supplied by the candidate:
 {profile.skills}
 
 Languages:
@@ -721,6 +745,12 @@ SECONDARY EXISTING SOURCE DOCUMENT:
 
 TARGET JOB DESCRIPTION:
 {request.job_description}
+
+FINAL SKILL-SELECTION CHECK BEFORE WRITING:
+Before producing the final CV, verify that the Core Skills section is not copied from generic job signals or the quality report. It must be selected from the candidate's own skills inventory and evidence. Remove weak generic words such as customer, research, training, models, and software engineering when they stand alone. Prefer precise technical skills, tools, methods, and evaluation concepts that match the target job.
+
+FINAL PROJECT-SELECTION CHECK BEFORE WRITING:
+Before producing the final CV, verify that the Projects section contains the strongest available project candidates for this job. If a defence, signal intelligence, RF/IQ, robustness, deployment, or mission-critical AI project is available and the job context matches those signals, include it unless three projects are clearly more directly relevant.
 """.strip()
         return instructions, user_input
 
@@ -732,6 +762,9 @@ TARGET JOB DESCRIPTION:
         evidence_map = self._build_evidence_map(profile, job_signals)
         truth_aware_signal_report = build_truth_aware_signal_report(profile, request.job_description, limit=24)
         required_structure = self._required_document_structure(request.document_type)
+        project_selection_guidance = self._project_selection_guidance(request)
+        project_candidate_summary = self._project_candidate_summary(profile)
+        skill_selection_guidance = self._skill_selection_guidance(request)
 
         instructions = f"""
 You are a strict career document quality reviewer.
@@ -746,8 +779,11 @@ Hard rules:
 4. Separate missing supported signals from unsupported job-fit gaps.
 5. Say clearly when regeneration cannot improve the score without more candidate evidence.
 6. For a covering letter, judge role fit, company alignment, concrete proof, tone, and concise structure.
-7. For a CV, judge scannability, evidence strength, ATS safety, and role alignment.
-8. Be direct and specific.
+7. For a CV, judge scannability, evidence strength, ATS safety, role alignment, whether the Core Skills section uses strong job-relevant technical skills, and whether the Projects section selected the strongest available projects for the target job.
+8. If the candidate supplied at least 3 truthful project candidates, the CV should include at least 3 relevant projects ordered from strongest fit to weaker fit.
+9. Flag weak skills sections that copy generic job signals such as customer, research, training, models, or software engineering instead of selecting precise skills from the candidate's actual skills inventory.
+10. Be direct and specific.
+11. Flag when a strategically relevant project was omitted, especially RF/signal intelligence, sensor/signal processing, robustness, deployment, or research-engineering projects for defence or mission-critical AI roles.
 
 Required Markdown sections:
 # AI Quality Review
@@ -855,10 +891,16 @@ Covering letter improvement priorities:
             document_guidance = """
 CV improvement priorities:
 - Rewrite weak bullets as action + tool/method + result/business purpose.
+- Rebuild the Core Skills section from the candidate's real skills inventory, not from generic job-signal words.
 - Keep ATS-safe formatting: plain headings, plain bullets, no tables, no icons, no decorative separators.
 - Remove duplicate, irrelevant, weak, or unsupported content.
 - Keep relevant depth, but cut anything that dilutes the target role.
+- Re-evaluate the Projects section. Keep at least 3 truthful project entries when available, ordered by relevance to the target job.
 """.strip()
+
+        project_selection_guidance = self._project_selection_guidance(request)
+        project_candidate_summary = self._project_candidate_summary(profile)
+        skill_selection_guidance = self._skill_selection_guidance(request)
 
         instructions = f"""
 You are an expert career document editor.
@@ -880,6 +922,12 @@ Hard rules:
 
 Document-specific guidance:
 {document_guidance}
+
+Project-selection rules:
+{project_selection_guidance}
+
+Skill-selection rules:
+{skill_selection_guidance}
 
 Required structure:
 {required_structure}
@@ -911,7 +959,16 @@ Professions / work experience:
 Projects:
 {profile.projects}
 
-Skills:
+Project candidates and selection notes:
+{project_candidate_summary}
+
+Project-selection rules:
+{project_selection_guidance}
+
+Skill-selection rules:
+{skill_selection_guidance}
+
+Skills inventory supplied by the candidate:
 {profile.skills}
 
 Languages:
@@ -958,6 +1015,7 @@ AI QUALITY REVIEW:
 
 TASK:
 Return only the improved {request.document_type}. No commentary. No code fence.
+If this is a CV, rebuild weak Core Skills sections that contain generic terms like customer, research, training, models, or software engineering. Use precise skills from the candidate's real skills inventory and evidence, selected for the target job. If this is a CV and the current Projects section omitted a stronger supplied project, replace the weakest selected project with the stronger one. For defence or mission-critical AI jobs, treat RF/signal intelligence, raw IQ/sensor processing, robustness, channel-shift detection, and deployment inference as strategically relevant.
 """.strip()
         return instructions, user_input
 
@@ -990,7 +1048,7 @@ Links: portfolio/linkedin/github
 2 to 4 lines focused on the target role.
 
 ## Core Skills
-Plain comma-separated or short bullet list of truthful skills.
+12 to 20 concise, truthful, job-relevant skills selected from the candidate's supplied skills inventory. Prefer concrete tools, frameworks, methods, model types, data workflows, and evaluation concepts. Do not copy generic job signals such as customer, research, training, models, or software engineering as standalone skills.
 
 ## Education
 Degree, school, dates, focus areas.
@@ -1000,7 +1058,11 @@ Degree, school, dates, focus areas.
 - Action + tool/method/domain detail + result or technical purpose.
 
 ## Projects
-- Project + tools/methods + outcome or purpose.
+### Project Name
+- Tools/methods used and why they matter for the target job.
+- Outcome, evaluation, technical purpose, or proof.
+
+Include at least 3 truthful project entries when 3 or more are supplied. Order them from best job fit to weaker job fit. Omit irrelevant extra projects unless needed to reach the minimum 3.
 
 ## Languages
 Only when supplied."""
@@ -1013,17 +1075,140 @@ Links: portfolio/linkedin/github
 2 to 3 lines focused on the target role.
 
 ## Core Skills
-Plain comma-separated or short bullet list of truthful skills.
+12 to 20 concise, truthful, job-relevant skills selected from the candidate's supplied skills inventory. Prefer concrete tools, frameworks, methods, model types, data workflows, and evaluation concepts. Do not copy generic job signals such as customer, research, training, models, or software engineering as standalone skills.
 
 ## Professional Experience
 ### Role | Organization | Location | Dates
 - Action + tool/method/domain detail + result or technical purpose.
 
 ## Projects
-- Project + tools/methods + outcome or purpose.
+### Project Name
+- Tools/methods used and why they matter for the target job.
+- Outcome, evaluation, technical purpose, or proof.
+
+Include at least 3 truthful project entries when 3 or more are supplied. Order them from best job fit to weaker job fit. Omit irrelevant extra projects unless needed to reach the minimum 3.
 
 ## Education
 Degree, school, dates, focus areas."""
+
+
+    def _skill_selection_guidance(self, request: GenerationRequest) -> str:
+        """Guidance for selecting a strong but compact CV skills section."""
+        job_text = (getattr(request, "job_description", "") or "").lower()
+        foundation_context = any(
+            token in job_text
+            for token in [
+                "foundation model", "foundational model", "llm", "vlm", "vision-language", "multimodal",
+                "transformer", "attention", "fine-tuning", "finetuning", "distributed training", "gpu cluster",
+                "data curation", "data cleaning", "data pruning", "large-scale",
+            ]
+        )
+        defence_context = any(
+            token in job_text
+            for token in [
+                "defence", "defense", "helsing", "sovereign", "mission-critical", "mission critical",
+                "signal", "signals", "sensor", "sensors", "rf", "iq", "radio", "autonomous", "robust",
+                "deployment", "distribution shift", "channel shift",
+            ]
+        )
+
+        base = (
+            "For a CV Core Skills section, do not copy the extracted job signals, quality-report signals, or vague words. "
+            "Select 12 to 20 compact skills from the candidate's supplied skills inventory and structured evidence. "
+            "Prefer precise skills that a recruiter can search for: languages, frameworks, model families, ML methods, data workflows, "
+            "evaluation metrics, signal/image-processing methods, deployment tools, and reproducibility practices. "
+            "Avoid weak standalone terms such as customer, research, training, models, software engineering, hard working, communication, or team player. "
+            "Use those concepts only when made specific, for example model training, reproducible ML workflows, or technical communication. "
+            "Do not list every supplied skill. Keep the section targeted, compact, and ATS-friendly. "
+            "A good format is one comma-separated line or 2 short grouped lines, not a long paragraph."
+        )
+        if foundation_context:
+            base += (
+                " For foundation-model, LLM/VLM, or multimodal AI roles, prioritize truthful adjacent skills such as Python, PyTorch, "
+                "deep learning, CNNs, self-supervised learning, transfer learning, model adaptation, custom loss functions, optical flow, "
+                "data curation, model evaluation, AUC-ROC, F1-score, error analysis, reproducible ML workflows, CUDA, and Git/GitHub. "
+                "Do not claim transformers, attention mechanisms, LLM training, VLM fine-tuning, JAX, or distributed training unless the candidate evidence explicitly supports them."
+            )
+        if defence_context:
+            base += (
+                " For defence, sensor, signal, RF, robustness, or deployment-focused roles, also prioritize truthful skills such as raw IQ signal processing, "
+                "RF modulation recognition, channel-shift detection, robustness evaluation, deployment inference, Streamlit, JSON/CSV exports, and CUDA inference."
+            )
+        return base
+
+    def _project_selection_guidance(self, request: GenerationRequest) -> str:
+        job_text = (getattr(request, "job_description", "") or "").lower()
+        defence_context = any(
+            token in job_text
+            for token in [
+                "defence", "defense", "helsing", "sovereign", "mission-critical", "mission critical",
+                "signal", "signals", "sensor", "sensors", "rf", "iq", "radio", "autonomous", "robotics",
+                "robust", "deployment", "distribution shift", "channel shift",
+            ]
+        )
+
+        if self._is_cover_letter(request.document_type):
+            base = (
+                "For a covering letter, do not list many projects. Select only the 1 to 2 strongest project examples "
+                "that match the target job, and mention them briefly as proof. Never invent a project or claim."
+            )
+            if defence_context:
+                base += (
+                    " When the target role involves defence, mission-critical AI, signals, sensors, robustness, or deployment, "
+                    "prefer project examples involving RF/signal intelligence, raw sensor or signal data, robustness evaluation, "
+                    "distribution/channel shift, GPU inference, or research-to-application delivery over generic examples."
+                )
+            return base
+
+        if (request.document_type or "").strip().lower() == "cv":
+            base = (
+                "For the CV Projects section, rank supplied project candidates by relevance to the target job. "
+                "Use job responsibilities, required skills, job-fit analysis, supported job signals, tools, domain, evidence strength, "
+                "and strategic domain relevance. Do not rely only on exact keyword overlap. "
+                "Include at least 3 truthful project entries when 3 or more project candidates are supplied. "
+                "If fewer than 3 truthful project candidates are supplied, include all available projects and do not invent additional projects. "
+                "Order projects from strongest job fit to weaker job fit. "
+                "Omit irrelevant extra projects beyond the best 3 unless they add clear value for the target role. "
+                "Use ### Project Name headings with 2 to 4 concise bullets so the PDF exporter can keep project blocks together where possible. "
+                "Do not include a project only because it sounds impressive; include it because it supports the target job. "
+                "If a supplied project is a stronger fit than one already chosen, replace the weaker project rather than adding a fourth project by default."
+            )
+            if defence_context:
+                base += (
+                    " Defence/mission-critical AI special rule: when the target company or role mentions defence, mission impact, "
+                    "sovereign technology, signals, sensors, robustness, deployment, or AI systems, treat RF signal intelligence, "
+                    "raw IQ/sensor processing, modulation recognition, channel-shift detection, robustness experiments, GPU inference, "
+                    "and research-to-application engineering as high-priority evidence. A project titled or described as RF Signal Intelligence Lab, "
+                    "RF modulation recognition, raw IQ signal processing, signal intelligence, channel-shift detection, or deployment inference "
+                    "should normally be included in the top 3 unless there are at least 3 projects with more direct foundation-model, LLM/VLM, "
+                    "transformer, distributed-training, or multimodal evidence. For a Helsing-style defence AI role, prefer RF Signal Intelligence Lab "
+                    "over weaker biomedical or generic validation projects when both are available."
+                )
+            return base
+
+        return (
+            "Select evidence by relevance to the target job. Do not include irrelevant projects or unsupported claims. "
+            "Consider strategic domain relevance, not only exact keyword overlap."
+        )
+
+    def _project_candidate_summary(self, profile) -> str:
+        plain_projects = (getattr(profile, "projects", "") or "").strip()
+        structured_evidence = (getattr(profile, "structured_evidence", "") or "").strip()
+
+        notes = []
+        if plain_projects:
+            notes.append("Plain Projects field candidates:\n" + plain_projects)
+        if structured_evidence:
+            notes.append(
+                "Structured evidence candidates. Prioritize entries where Type is Project, but work achievements may be used if they are more relevant than weak projects:\n"
+                + structured_evidence
+            )
+        if not notes:
+            return (
+                "No explicit project candidates were supplied. If the CV requires a Projects section, use only truthful project-like evidence from work experience or studies. "
+                "If fewer than 3 truthful project-like examples exist, include fewer and do not invent."
+            )
+        return "\n\n---\n\n".join(notes)
 
     def _build_evidence_map(self, profile, job_signals: list[str]) -> str:
         source = "\n".join([

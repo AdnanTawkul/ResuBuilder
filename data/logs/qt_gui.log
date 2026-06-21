@@ -138,3 +138,48 @@
 [2026-06-10 22:02:35] Quality improvement finished: job_id=3, chars=2952
 [2026-06-10 22:05:53] Manual AI edit started: job_id=4, type=Covering Letter
 [2026-06-10 22:06:05] Quality improvement finished: job_id=4, chars=2808
+[2026-06-21 15:11:53] Generation started: job_id=1, type=CV, provider=Ollama Local, model=qwen3:14b
+[2026-06-21 15:12:26] Generation finished: job_id=1, chars=4848
+[2026-06-21 15:26:50] Generation started: job_id=2, type=CV, provider=Ollama Local, model=qwen3:14b
+[2026-06-21 15:27:18] Generation finished: job_id=2, chars=4582
+[2026-06-21 15:28:24] Job fit analysis started: job_id=1, model=qwen3:14b
+[2026-06-21 15:28:24] Job fit analysis failed:
+Traceback (most recent call last):
+  File "G:\Python\ResuBuilder\ResuBuilder\src\resume_ai\qt_gui.py", line 2839, in _run_job_fit_worker
+    result = self.ai_service.analyze_job_fit(
+  File "G:\Python\ResuBuilder\ResuBuilder\src\resume_ai\ai_service.py", line 171, in analyze_job_fit
+    {project_candidate_summary}
+NameError: name 'project_candidate_summary' is not defined
+
+[2026-06-21 15:28:30] Job fit analysis started: job_id=2, model=qwen3:14b
+[2026-06-21 15:28:30] Job fit analysis failed:
+Traceback (most recent call last):
+  File "G:\Python\ResuBuilder\ResuBuilder\src\resume_ai\qt_gui.py", line 2839, in _run_job_fit_worker
+    result = self.ai_service.analyze_job_fit(
+  File "G:\Python\ResuBuilder\ResuBuilder\src\resume_ai\ai_service.py", line 171, in analyze_job_fit
+    {project_candidate_summary}
+NameError: name 'project_candidate_summary' is not defined
+
+[2026-06-21 15:28:48] Job fit analysis started: job_id=3, model=qwen3:14b
+[2026-06-21 15:28:48] Job fit analysis failed:
+Traceback (most recent call last):
+  File "G:\Python\ResuBuilder\ResuBuilder\src\resume_ai\qt_gui.py", line 2839, in _run_job_fit_worker
+    result = self.ai_service.analyze_job_fit(
+  File "G:\Python\ResuBuilder\ResuBuilder\src\resume_ai\ai_service.py", line 171, in analyze_job_fit
+    {project_candidate_summary}
+NameError: name 'project_candidate_summary' is not defined
+
+[2026-06-21 15:29:01] AI quality review started: job_id=1, type=CV
+[2026-06-21 15:29:15] AI quality review finished: job_id=1, chars=2432
+[2026-06-21 15:29:22] Quality improvement started: job_id=1, type=CV
+[2026-06-21 15:29:49] Quality improvement finished: job_id=1, chars=4599
+[2026-06-21 15:41:36] Job fit analysis started: job_id=1, model=qwen3:14b
+[2026-06-21 15:41:55] Job fit analysis finished: job_id=1, chars=3153
+[2026-06-21 15:42:04] Generation started: job_id=1, type=CV, provider=Ollama Local, model=qwen3:14b
+[2026-06-21 15:42:26] Generation finished: job_id=1, chars=4227
+[2026-06-21 15:43:37] AI quality review started: job_id=1, type=CV
+[2026-06-21 15:43:51] AI quality review finished: job_id=1, chars=2768
+[2026-06-21 15:44:07] Quality improvement started: job_id=1, type=CV
+[2026-06-21 15:44:30] Quality improvement finished: job_id=1, chars=4227
+[2026-06-21 15:53:45] Generation started: job_id=1, type=CV, provider=Ollama Local, model=qwen3:14b
+[2026-06-21 15:54:13] Generation finished: job_id=1, chars=4512
